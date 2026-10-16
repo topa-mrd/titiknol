@@ -16,23 +16,22 @@ const pill = "inline-flex min-h-10 items-center rounded-full px-3 text-xs font-h
 
 const isActiveAt = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-/** Pintu masuk tahap Share your story (studio menulis). `short` = tombol ikon untuk baris atas di layar kecil. */
-export function WriteLink({ short = false, className = "" }: { short?: boolean; className?: string }) {
+/** Pintu masuk tahap Share your story (studio menulis). */
+function WriteLink() {
   const pathname = usePathname();
   return (
     <Link
       href="/share"
       aria-current={isActiveAt(pathname, "/share") ? "page" : undefined}
-      className={`${short ? "grid size-10 place-items-center rounded-full" : `${pill} gap-1.5`} border-2 border-brand/50 text-brand-ink hover:bg-brand-soft aria-[current=page]:bg-brand-soft ${className}`}
+      className={`${pill} gap-1.5 border-2 border-brand/50 text-brand-ink hover:bg-brand-soft aria-[current=page]:bg-brand-soft`}
     >
       <PenIcon className="size-4" strokeWidth={2.25} />
-      {short ? <span className="sr-only">Tulis cerita</span> : "Tulis cerita"}
+      Tulis cerita
     </Link>
   );
 }
 
-/** `withWrite` = sertakan tombol Tulis cerita (desktop); di layar kecil tombolnya ada di baris atas header. */
-export function AppNav({ className = "", withWrite = true }: { className?: string; withWrite?: boolean }) {
+export function AppNav({ className = "" }: { className?: string }) {
   const pathname = usePathname();
   const isActive = (href: string) => isActiveAt(pathname, href);
   return (
@@ -55,11 +54,9 @@ export function AppNav({ className = "", withWrite = true }: { className?: strin
             </li>
           );
         })}
-        {withWrite && (
-          <li className="ml-1">
-            <WriteLink />
-          </li>
-        )}
+        <li className="ml-1">
+          <WriteLink />
+        </li>
       </ul>
     </nav>
   );

@@ -330,7 +330,7 @@ function CheerToast() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-40 border-t-2 border-leaf bg-leaf-soft motion-safe:animate-[rise_400ms_var(--ease-out-expo)_both]"
+      className="pointer-events-none fixed inset-x-0 bottom-(--tabbar) z-40 border-t-2 border-leaf bg-leaf-soft motion-safe:animate-[rise_400ms_var(--ease-out-expo)_both]"
     >
       <div className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-3">
         <Mascot pose="cheer" idle={false} className="h-16 w-auto shrink-0" />

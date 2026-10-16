@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import { AccountButton } from "@/components/AccountButton";
 import { AppHeader } from "@/components/AppHeader";
 import { InView } from "@/components/InView";
 import { Mascot } from "@/components/Mascot";
@@ -42,11 +43,7 @@ export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader nav>
-        <div className="hidden sm:block">
-          <Link href="/start" className={buttonClass("secondary")}>
-            Mulai
-          </Link>
-        </div>
+        <AccountButton />
       </AppHeader>
 
       <main id="main" className="flex-1">

@@ -58,7 +58,7 @@ export function CommunityBoard() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="font-display text-[2rem] leading-[1.15] font-heading tracking-display text-balance sm:text-[2.625rem]">
             Komunitas
@@ -67,7 +67,7 @@ export function CommunityBoard() {
             Cari mentor yang mau berbagi, atau komunitas untuk belajar bareng. Kontaknya dibagikan langsung oleh mereka.
           </p>
         </div>
-        <div className="grid shrink-0 gap-3 sm:flex">
+        <div className="grid shrink-0 gap-3 sm:flex sm:self-start lg:self-auto">
           <Link href="/share?jenis=mentor" className={buttonClass("primary", "lg")}>
             Jadi mentor
           </Link>

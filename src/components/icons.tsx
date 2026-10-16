@@ -151,3 +151,17 @@ export const SpeakerOffIcon = (p: IconProps) => (
     <path d="M16 9.5l5 5M21 9.5l-5 5" />
   </Icon>
 );
+
+export const BriefcaseIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="7.5" width="18" height="12.5" rx="2.5" />
+    <path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5M3 12.5h18" />
+  </Icon>
+);
+
+export const BookIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 6.5C10.5 5 8 4.5 4 4.5v13c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-13c-4 0-6.5.5-8 2z" />
+    <path d="M12 6.5v13" />
+  </Icon>
+);

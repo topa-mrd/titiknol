@@ -25,6 +25,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#ffffff",
   colorScheme: "light",
+  // Bar tab bawah memakai env(safe-area-inset-bottom) di HP berponi.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

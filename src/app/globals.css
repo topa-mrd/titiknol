@@ -336,3 +336,19 @@
   font-weight: 800;
   color: var(--color-ink);
 }
+
+/*
+ * Bar tab bawah (HP): beri ruang di bawah halaman dan naikkan elemen fixed
+ * (mis. toast pujian roadmap) setinggi bar. --tabbar 0 bila bar tidak ada.
+ */
+:root {
+  --tabbar: 0px;
+}
+@media (width < 48rem) {
+  :root:has([data-tabbar]) {
+    --tabbar: calc(4.25rem + 2px + env(safe-area-inset-bottom));
+  }
+}
+body {
+  padding-bottom: var(--tabbar);
+}
