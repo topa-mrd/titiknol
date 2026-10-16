@@ -1,0 +1,322 @@
+@import "tailwindcss";
+
+/*
+ * Token desain TitikNol: cerah dan optimistis ala Duolingo. Latar putih,
+ * oranye hangat untuk aksi utama, kuning matahari untuk sorotan, hijau untuk
+ * "selesai", biru untuk info/tautan. Tombol dan kartu punya "bibir" 3D.
+ * Komponen memakai kelas Tailwind dari token ini (bg-canvas, bg-surface,
+ * text-ink, border-line, bg-brand, text-link, bg-leaf, text-danger, …).
+ * Pasangan teks/latar sudah dicek ≥ 4.5:1 (WCAG AA); garis kontrol ≥ 3:1.
+ */
+:root {
+  color-scheme: light;
+
+  --canvas: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #fff6ea;
+  --ink: #2b2118;
+  --ink-muted: #6b5d50;
+  /* Garis kartu (dekoratif) dan garis kontrol (input, ≥ 3:1). */
+  --line: #eadfce;
+  --line-strong: #9a8b7c;
+
+  --brand: #ff9600;
+  --brand-strong: #ffa526;
+  --brand-lip: #e07800;
+  --brand-soft: #fff3e0;
+  --on-brand: #3d1f00;
+  /* Oranye untuk teks di atas putih (oranye penuh < 4.5:1). */
+  --brand-ink: #a36000;
+
+  --sun: #ffc800;
+  --sun-lip: #e0a800;
+  --sun-soft: #fff6cc;
+  --on-sun: #3d1f00;
+
+  --leaf: #3fa600;
+  --leaf-lip: #2f7d00;
+  --leaf-soft: #e8f7dc;
+  --on-leaf: #ffffff;
+  --leaf-ink: #2f7d00;
+
+  --sky: #1899d6;
+  --sky-soft: #eaf6fd;
+  --link: #0b75b3;
+  --link-lip: #08598a;
+
+  --danger: #d93a3f;
+  --danger-lip: #a8272b;
+  --danger-soft: #fdeaea;
+
+  /* Satu kurva untuk masuknya gerak: cepat di awal, mendarat pelan. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-lip: var(--brand-lip);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+  --color-brand-ink: var(--brand-ink);
+
+  --color-sun: var(--sun);
+  --color-sun-lip: var(--sun-lip);
+  --color-sun-soft: var(--sun-soft);
+  --color-on-sun: var(--on-sun);
+
+  --color-leaf: var(--leaf);
+  --color-leaf-lip: var(--leaf-lip);
+  --color-leaf-soft: var(--leaf-soft);
+  --color-on-leaf: var(--on-leaf);
+  --color-leaf-ink: var(--leaf-ink);
+
+  --color-sky: var(--sky);
+  --color-sky-soft: var(--sky-soft);
+  --color-link: var(--link);
+  --color-link-lip: var(--link-lip);
+
+  --color-danger: var(--danger);
+  --color-danger-lip: var(--danger-lip);
+  --color-danger-soft: var(--danger-soft);
+
+  --font-sans: "Nunito Variable", ui-rounded, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@theme {
+  --radius-card: 1.25rem;
+  --font-weight-medium: 600;
+  --font-weight-emphasis: 700;
+  --font-weight-heading: 800;
+  --tracking-display: -0.01em;
+}
+
+/* Huruf judul: Nunito tebal yang membulat. */
+@utility font-display {
+  font-family: "Nunito Variable", ui-rounded, ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Kartu ala Duolingo: garis 2px dengan tepi bawah 4px. */
+@utility card {
+  border: 2px solid var(--line);
+  border-bottom-width: 4px;
+  border-radius: var(--radius-card);
+  background-color: var(--surface);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-color: var(--color-line-strong) var(--color-surface-muted);
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-feature-settings: "kern", "liga";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  input,
+  textarea {
+    caret-color: var(--color-brand-lip);
+  }
+
+  /* Placeholder tetap ≥ 4.5:1 di atas putih. */
+  ::placeholder {
+    color: var(--color-ink-muted);
+    opacity: 1;
+  }
+
+  /* Fokus keyboard selalu terlihat, tidak muncul saat diklik mouse. */
+  :focus-visible {
+    outline: 3px solid var(--color-sky);
+    outline-offset: 3px;
+    border-radius: 8px;
+  }
+
+  ::selection {
+    background-color: var(--color-sun);
+    color: var(--color-on-sun);
+  }
+
+  a {
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Cincin berdenyut di belakang node "Kamu di sini" pada roadmap. */
+@keyframes halo {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* Benang jalur: ruas yang baru selesai "ditarik" ke node berikutnya. */
+@keyframes thread-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes thread-draw-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Jawaban yang baru tersimpan "mendarat" di bawah node-nya. */
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Muncul: naik sedikit lalu diam. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Konfirmasi ceria: centang/node yang "loncat" masuk. */
+@keyframes pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Maskot: napas pelan saat diam. */
+@keyframes bob {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-5px);
+  }
+}
+
+/* Maskot: tangan melambai. */
+@keyframes wave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-24deg);
+  }
+}
+
+/* Maskot: lompat girang (dua kali, lalu diam). */
+@keyframes hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-14px);
+  }
+}
+
+/* Maskot: mengangguk saat pertanyaan berganti. */
+@keyframes nod {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(-6deg);
+  }
+  70% {
+    transform: rotate(4deg);
+  }
+}
+
+/*
+ * Jalur yang ditarik saat bagian masuk layar (lihat InView.tsx). Hanya ruas dan
+ * node (dekoratif) yang disembunyikan sebelum terlihat; teks selalu tampil.
+ */
+[data-inview] .reveal-seg {
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+[data-inview] .reveal-seg-y {
+  transform-origin: top center;
+  transform: scaleY(0);
+}
+[data-inview] .reveal-node {
+  opacity: 0;
+  transform: scale(0.4);
+}
+[data-inview="true"] .reveal-seg {
+  animation: thread-draw 600ms var(--ease-out-expo) var(--d, 0ms) both;
+}
+[data-inview="true"] .reveal-seg-y {
+  animation: thread-draw-y 600ms var(--ease-out-expo) var(--d, 0ms) both;
+}
+[data-inview="true"] .reveal-node {
+  animation: pop 480ms var(--ease-out-expo) var(--d, 0ms) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-inview] .reveal-seg,
+  [data-inview] .reveal-seg-y,
+  [data-inview] .reveal-node {
+    opacity: 1;
+    transform: none;
+  }
+}
