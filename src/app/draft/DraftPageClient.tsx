@@ -37,6 +37,7 @@ function DraftWithBuild() {
   const autoBuild = useSearchParams().get("build") === "1";
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const startedRef = useRef(false);
+  const inFlightRef = useRef(false);
 
   /**
    * Belum login → simpan pilihan (sudah di localStorage) lalu ke /login?next=/draft?build=1.
@@ -58,6 +59,7 @@ function DraftWithBuild() {
     }
 
     setPhase({ kind: "building" });
+    inFlightRef.current = true;
     try {
       if (session.roadmapId) {
         const existing = await getRoadmap(session.roadmapId).catch(() => null);
@@ -95,8 +97,24 @@ function DraftWithBuild() {
         kind: "error",
         message: error instanceof StoreError ? error.message : "Roadmap gagal disimpan. Coba lagi sebentar lagi.",
       });
+    } finally {
+      inFlightRef.current = false;
     }
   }, [router]);
+
+  /**
+   * Router Next menyimpan halaman yang ditinggalkan beserta state-nya. Setelah roadmap jadi dan
+   * pengguna kembali ke /draft, loader "Menyimpan roadmapmu…" dari proses yang sudah selesai
+   * tidak boleh ikut kembali. Efek ini jalan lagi setiap halaman tampil kembali.
+   */
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!inFlightRef.current) setPhase((p) => (p.kind === "building" ? { kind: "idle" } : p));
+      // Kunjungan berikutnya ke /draft?build=1 (mis. setelah login ulang) harus bisa membangun lagi.
+      if (!autoBuild) startedRef.current = false;
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [autoBuild]);
 
   useEffect(() => {
     if (!autoBuild || startedRef.current) return;

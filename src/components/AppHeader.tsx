@@ -15,14 +15,14 @@ export function AppHeader({ children, nav = false }: { children?: ReactNode; nav
         <Link href="/" aria-label="TitikNol, ke beranda" className="shrink-0 rounded-xl">
           <Logo />
         </Link>
-        {nav && <AppNav className="hidden md:block" />}
-        <div className="flex items-center justify-end gap-2 md:min-w-30">
-          {nav && <WriteLink short className="md:hidden" />}
+        {nav && <AppNav className="hidden xl:block" />}
+        <div className="flex items-center justify-end gap-2 xl:min-w-30">
+          {nav && <WriteLink short className="xl:hidden" />}
           {children}
           <SoundToggle />
         </div>
       </div>
-      {nav && <AppNav withWrite={false} className="-mx-4 mt-3 overflow-x-auto px-3 md:hidden" />}
+      {nav && <AppNav withWrite={false} className="-mx-4 mt-3 overflow-x-auto px-3 xl:hidden" />}
     </header>
   );
 }

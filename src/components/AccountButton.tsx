@@ -50,7 +50,7 @@ export function AccountButton() {
           Admin
         </Link>
       )}
-      <span className="hidden max-w-40 truncate text-sm font-medium text-ink-muted sm:inline" title={user.email ?? undefined}>
+      <span className="hidden max-w-28 truncate text-sm font-medium text-ink-muted sm:inline" title={user.email ?? undefined}>
         {user.name}
       </span>
       <button
