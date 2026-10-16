@@ -10,7 +10,7 @@ import { postJson } from "@/lib/http-client";
 import { loginHref } from "@/lib/safe-next";
 import { StoreError, createRoadmap, getRoadmap, getUser } from "@/lib/store";
 import { ResolvedRoadmapSchema } from "@/lib/types";
-import { DraftWorkspace } from "./DraftWorkspace";
+import { CHEAPER_REQUEST, DraftWorkspace } from "./DraftWorkspace";
 import { play } from "@/lib/sound";
 
 const BUILD_MESSAGES = [
@@ -34,7 +34,9 @@ type Phase = { kind: "idle" } | { kind: "building" } | { kind: "error"; message:
 
 function DraftWithBuild() {
   const router = useRouter();
-  const autoBuild = useSearchParams().get("build") === "1";
+  const params = useSearchParams();
+  const autoBuild = params.get("build") === "1";
+  const autoRequest = params.get("minta") === "hemat" ? CHEAPER_REQUEST : undefined;
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const startedRef = useRef(false);
   const inFlightRef = useRef(false);
@@ -152,7 +154,11 @@ function DraftWithBuild() {
           </button>
         </div>
       )}
-      <DraftWorkspace onBuild={() => void build()} />
+      <DraftWorkspace
+        onBuild={() => void build()}
+        autoRequest={autoRequest}
+        onAutoRequestSent={() => router.replace("/draft", { scroll: false })}
+      />
     </>
   );
 }

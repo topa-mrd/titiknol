@@ -352,14 +352,31 @@ export const CostExtraSchema = z
   .refine((e) => e.max >= e.min, { message: "Harga maksimum lebih kecil dari minimum" });
 export type CostExtra = z.infer<typeof CostExtraSchema>;
 
+/** Opsi lebih hemat untuk roadmap (beasiswa, bantuan biaya, alternatif murah/gratis), selalu bersumber. */
+export const SAVING_KINDS = ["beasiswa", "bantuan", "lebih-murah", "gratis"] as const;
+export type SavingKind = (typeof SAVING_KINDS)[number];
+export const SavingOptionSchema = z.object({
+  id: z.string().max(48).regex(SLUG_PATTERN),
+  title: z.string().trim().min(2).max(90),
+  kind: z.enum(SAVING_KINDS),
+  /** Apa yang ditanggung atau dihemat. */
+  covers: z.string().trim().max(200).default(""),
+  /** Syarat singkat. */
+  requirement: z.string().trim().max(200).default(""),
+  sourceUrl: z.url({ protocol: /^https$/ }),
+  sourceTitle: z.string().trim().max(120).default(""),
+});
+export type SavingOption = z.infer<typeof SavingOptionSchema>;
+
 export const RoadmapCostsSchema = z.object({
   items: z.record(z.string().max(64).regex(SLUG_PATTERN), CostItemSchema),
   extras: z.array(CostExtraSchema).max(10).default([]),
+  savings: z.array(SavingOptionSchema).max(6).default([]),
   /** belum = belum dicari; selesai = ada hasil; kosong = sudah dicari, tidak ada biaya besar yang relevan/bersumber. */
   extrasStatus: z.enum(["belum", "selesai", "kosong"]).default("belum"),
 });
 export type RoadmapCosts = z.infer<typeof RoadmapCostsSchema>;
-export const EMPTY_COSTS: RoadmapCosts = { items: {}, extras: [], extrasStatus: "belum" };
+export const EMPTY_COSTS: RoadmapCosts = { items: {}, extras: [], savings: [], extrasStatus: "belum" };
 
 /** Permintaan riset biaya besar untuk satu roadmap. */
 export const CostResearchRequestSchema = z.object({

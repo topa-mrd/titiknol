@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as costsPost } from "@/app/api/costs/route";
-import { normalizeCostProposals } from "@/lib/ai/normalize";
+import { normalizeCostProposals, normalizeSavingProposals } from "@/lib/ai/normalize";
 import { costResearchPrompt } from "@/lib/ai/prompts";
 import { AiUnavailableError, markProofOfFunds, mergeAlternatives, researchCosts } from "@/lib/ai/service";
 import { costLines, extraLines, summarize, withExtra } from "@/lib/costs";
@@ -49,6 +49,21 @@ describe("normalisasi usulan biaya", () => {
       expect.objectContaining({ category: "hidup", min: 500000, max: 900000, unit: "per bulan", qty: 48, site: "kos.id" }),
     ]);
     expect(normalizeCostProposals({ jawaban: "tidak ada" })).toBeNull();
+  });
+
+  it("opsi hemat: alias kolom, jenis ditebak dari judul, tanpa situs dibuang", () => {
+    expect(
+      normalizeSavingProposals({
+        opsi: [
+          { title: "KIP Kuliah", kind: "?", covers: "UKT dan biaya hidup", situs: "kip-kuliah.kemdikbud.go.id" },
+          { judul: "Kursus gratis Dicoding Academy", menanggung: "Biaya kursus", situs: "https://www.dicoding.com/academies" },
+          { judul: "Tanpa sumber" },
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({ title: "KIP Kuliah", kind: "bantuan", site: "kip-kuliah.kemdikbud.go.id" }),
+      expect.objectContaining({ title: "Kursus gratis Dicoding Academy", kind: "gratis", site: "dicoding.com" }),
+    ]);
   });
 
   it("kurs: rupiah apa adanya, mata uang asing jadi rentang yang dilebarkan, tak dikenal ditolak", () => {
@@ -119,7 +134,7 @@ describe("bukti dana", () => {
 describe("researchCosts", () => {
   const env = { OPENROUTER_API_KEY: "k", AI_PROVIDER: "openrouter" };
 
-  it("4 pencarian terfokus; angka tanpa sumber yang cocok dibuang; URL dari metadata pencarian", async () => {
+  it("4 pencarian biaya + 1 opsi hemat paralel; angka tanpa sumber yang cocok dibuang; URL dari metadata pencarian", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
       const prompt = JSON.parse(String(init?.body)).messages[1].content as string;
       if (prompt.includes("Biaya pendidikan formal"))
@@ -132,10 +147,32 @@ describe("researchCosts", () => {
         );
       if (prompt.includes("Biaya hidup per bulan"))
         return openrouter([{ label: "Biaya hidup", kategori: "hidup", mata_uang: "EUR", min: 1000, max: 1500, satuan: "per bulan", jumlah: 24, situs: "study-in.nl" }], ["https://www.study-in.nl/living"]);
+      if (prompt.includes("opsi lebih hematnya"))
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: `Ringkasan.\n${JSON.stringify({
+                    opsi: [
+                      { judul: "StuNed Scholarship", jenis: "beasiswa", menanggung: "Tuition, biaya hidup, visa", syarat: "WNI, S1 relevan", situs: "nesoindonesia.or.id" },
+                      { judul: "Beasiswa karangan", jenis: "beasiswa", menanggung: "Semua", syarat: "-", situs: "tidak-ada.id" },
+                    ],
+                  })}`,
+                  annotations: [{ type: "url_citation", url_citation: { url: "https://www.nesoindonesia.or.id/beasiswa/stuned", title: "Neso" } }],
+                },
+              },
+            ],
+          }),
+        );
       return openrouter([], []);
     });
     const result = await researchCosts(input, { env, fetch, deadlineMs: 50_000 });
-    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(result.savings).toEqual([
+      expect.objectContaining({ title: "StuNed Scholarship", kind: "beasiswa", sourceUrl: "https://www.nesoindonesia.or.id/beasiswa/stuned" }),
+    ]);
     expect(result.status).toBe("selesai");
     expect(result.extras.map((e) => e.label)).toEqual(["Tuition fee S2", "Biaya hidup"]);
     expect(result.extras[0]).toMatchObject({ unit: "per tahun", qty: 2, sourceUrl: "https://www.uu.nl/en/masters/tuition", included: true });

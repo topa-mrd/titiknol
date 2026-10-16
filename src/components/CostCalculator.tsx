@@ -7,12 +7,16 @@ import { postJson } from "@/lib/http-client";
 import {
   CostExtraSchema,
   PriceSchema,
+  SavingOptionSchema,
   type CostExtra,
+  type SavingKind,
+  type SavingOption,
   type CostResearchRequest,
   type ExtraCategory,
   type ResolvedStep,
   type RoadmapCosts,
 } from "@/lib/types";
+import Link from "next/link";
 import { z } from "zod";
 import { AlertIcon, CheckIcon, ExternalIcon, SparkIcon } from "./icons";
 import { Sep } from "./Sep";
@@ -24,9 +28,15 @@ type Props = {
   saveLabel: string;
   /** Data rencana untuk mencari biaya besar (kuliah, hidup, visa…) di web. */
   research: Omit<CostResearchRequest, "existing">;
+  /** Draf plan roadmap ini ada di perangkat: bisa minta revisi plan yang lebih hemat di Drafting. */
+  canRevise?: boolean;
 };
 
-const ResearchResponseSchema = z.object({ extras: z.array(CostExtraSchema), status: z.enum(["selesai", "kosong"]) });
+const ResearchResponseSchema = z.object({
+  extras: z.array(CostExtraSchema),
+  savings: z.array(SavingOptionSchema).default([]),
+  status: z.enum(["selesai", "kosong"]),
+});
 
 type ResearchState = "idle" | "checking" | "searching" | "demo" | "error";
 
@@ -35,7 +45,7 @@ const ORIGIN_LABEL = { kurasi: "dari situs resmi", ai: "perkiraan AI", koreksi: 
 const dateFormat = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
 /** Kalkulator biaya sumber di roadmap: harga dari database, bisa dikoreksi, AI mencari bila kosong. */
-export function CostCalculator({ steps, costs, onChange, saveLabel, research }: Props) {
+export function CostCalculator({ steps, costs, onChange, saveLabel, research, canRevise = false }: Props) {
   const lines = costLines(steps, costs);
   const extras = extraLines(costs);
   const sum = summarize(lines, extras);
@@ -61,7 +71,7 @@ export function CostCalculator({ steps, costs, onChange, saveLabel, research }: 
       return;
     }
     setState("idle");
-    onChange({ ...latestRef.current, extras: result.data.extras, extrasStatus: result.data.status });
+    onChange({ ...latestRef.current, extras: result.data.extras, savings: result.data.savings, extrasStatus: result.data.status });
   };
 
   // Sekali per roadmap: cari biaya besar otomatis bila AI aktif dan belum pernah dicari.
@@ -142,6 +152,8 @@ export function CostCalculator({ steps, costs, onChange, saveLabel, research }: 
         onRetry={() => void runResearch()}
         onChange={(id, patch) => onChange(withExtra(costs, id, patch))}
       />
+
+      <Savings savings={costs.savings} status={costs.extrasStatus} state={state} canRevise={canRevise} />
 
       <div className="border-t border-line p-5 text-xs leading-relaxed text-ink-muted sm:px-6">
         <p>
@@ -306,6 +318,12 @@ const CATEGORY_LABEL: Record<ExtraCategory, string> = {
   perangkat: "Perangkat",
   lainnya: "Lainnya",
 };
+/** Pengingat per jenis biaya, selalu tampil. */
+const ROW_HINT: Partial<Record<ExtraCategory, string>> = {
+  hidup: "Bisa meleset: tergantung kota, gaya hidup, dan kurs. Sesuaikan dengan rencanamu sendiri.",
+  pendidikan: "Bisa jauh lebih murah atau gratis lewat golongan UKT, bantuan biaya, atau beasiswa. Lihat opsi lebih hemat.",
+};
+
 const hostLabel = (url: string) => {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -354,6 +372,16 @@ function BigCosts({
                 ? `${extras.length} biaya besar ditemukan.`
                 : ""}
       </p>
+
+      {/* Pengingat tetap: angka di bagian ini selalu patokan, dan biaya kuliah sering bisa ditekan. */}
+      <div className="mx-5 mt-4 flex gap-2.5 rounded-2xl bg-sun-soft px-4 py-3 text-sm leading-relaxed text-on-sun sm:mx-6">
+        <AlertIcon className="mt-0.5 size-4 shrink-0" />
+        <p>
+          <strong className="font-heading">Patokan, bukan kepastian.</strong> Biaya hidup bisa meleset jauh tergantung kota, gaya
+          hidup, dan kurs. Biaya kuliah sering bisa jauh lebih murah, bahkan gratis, lewat golongan UKT, bantuan biaya, atau
+          beasiswa. Lihat <a href="#opsi-hemat" className="font-heading underline underline-offset-4">opsi lebih hemat</a> di bawah.
+        </p>
+      </div>
 
       {busy && (
         <div aria-hidden="true" className="space-y-3 px-5 py-4 sm:px-6">
@@ -421,6 +449,12 @@ function ExtraRow({ line, onChange }: { line: ExtraLine; onChange: (patch: Parti
             </a>
           </p>
           {extra.note && <p className="mt-1 text-xs leading-relaxed text-ink-muted">{extra.note}</p>}
+          {ROW_HINT[extra.category] && (
+            <p className="mt-1.5 flex gap-1.5 text-xs leading-relaxed font-medium text-ink">
+              <SparkIcon className="mt-px size-3.5 shrink-0 text-leaf-ink" />
+              {ROW_HINT[extra.category]}
+            </p>
+          )}
 
           {extra.included && (
             <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -464,5 +498,90 @@ function ExtraRow({ line, onChange }: { line: ExtraLine; onChange: (patch: Parti
         </div>
       </div>
     </li>
+  );
+}
+
+// ───────────────────────── Opsi lebih hemat ─────────────────────────
+
+const KIND: Record<SavingKind, { label: string; tone: string }> = {
+  beasiswa: { label: "Beasiswa", tone: "bg-leaf-soft text-leaf-ink" },
+  bantuan: { label: "Bantuan biaya", tone: "bg-sky-soft text-link" },
+  "lebih-murah": { label: "Lebih murah", tone: "bg-sun-soft text-on-sun" },
+  gratis: { label: "Gratis", tone: "bg-leaf-soft text-leaf-ink" },
+};
+
+function Savings({
+  savings,
+  status,
+  state,
+  canRevise,
+}: {
+  savings: SavingOption[];
+  status: RoadmapCosts["extrasStatus"];
+  state: ResearchState;
+  canRevise: boolean;
+}) {
+  const busy = state === "searching" || state === "checking";
+  return (
+    <section id="opsi-hemat" aria-labelledby="cost-save" className="scroll-mt-6 border-t border-line">
+      <h3 id="cost-save" className="border-b border-line bg-leaf-soft px-5 py-2.5 text-sm font-heading tracking-wide text-leaf-ink uppercase sm:px-6">
+        Opsi lebih hemat
+      </h3>
+      <div className="px-5 py-4 sm:px-6">
+        {busy ? (
+          <p className="text-sm leading-relaxed text-ink-muted">Mencari beasiswa, bantuan biaya, dan alternatif yang lebih murah…</p>
+        ) : savings.length > 0 ? (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {savings.map((o) => (
+              <li key={o.id} className="rounded-2xl border-2 border-line p-4">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-heading ${KIND[o.kind].tone}`}>{KIND[o.kind].label}</span>
+                <p className="mt-2 leading-snug font-emphasis text-balance">{o.title}</p>
+                {o.covers && (
+                  <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
+                    <span className="font-medium text-ink">Menanggung:</span> {o.covers}
+                  </p>
+                )}
+                {o.requirement && (
+                  <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+                    <span className="font-medium text-ink">Syarat:</span> {o.requirement}
+                  </p>
+                )}
+                <a
+                  href={o.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="mt-2 inline-flex min-h-9 items-center gap-1 text-sm font-emphasis text-link underline decoration-link/40 underline-offset-4 hover:decoration-link"
+                >
+                  {hostLabel(o.sourceUrl)}
+                  <ExternalIcon className="size-3.5" />
+                  <span className="sr-only"> (sumber {o.title}, tab baru)</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm leading-relaxed text-ink-muted">
+            {state === "demo"
+              ? "Beasiswa, bantuan biaya, dan alternatif yang lebih murah dicari AI dari web. Di mode demo bagian ini belum aktif."
+              : status === "belum"
+                ? "Opsi lebih hemat akan dicari bersama biaya besar."
+                : "Belum ada opsi hemat bersumber yang ditemukan untuk rencana ini."}
+          </p>
+        )}
+        {savings.length > 0 && (
+          <p className="mt-3 text-xs leading-relaxed text-ink-muted">
+            Syarat dan jadwal pendaftaran bisa berubah. Selalu cek situs resminya sebelum mendaftar.
+          </p>
+        )}
+        {canRevise && (
+          <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-surface-muted p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm leading-relaxed">Mau jalur yang biayanya lebih ringan? Minta Gemini menyusun ulang plan-mu.</p>
+            <Link href="/draft?minta=hemat" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-2xl border-2 border-line bg-surface px-4 text-sm font-heading tracking-wide text-link uppercase shadow-[0_3px_0_var(--color-line)] hover:bg-surface-muted active:translate-y-0.5 active:shadow-none">
+              Minta plan yang lebih hemat
+            </Link>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

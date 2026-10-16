@@ -28,8 +28,10 @@ import {
   type TranscribeRequest,
   type Transcript,
   CostExtraSchema,
+  SavingOptionSchema,
   type CostExtra,
   type CostResearchRequest,
+  type SavingOption,
 } from "../types";
 import { mockDraft, mockRefine, mockRoadmap, mockStory } from "./mock";
 import {
@@ -41,9 +43,9 @@ import {
   normalizeStoryDraft,
   normalizeTranscript,
   normalizeCostProposals,
-  type CostProposal,
+  normalizeSavingProposals,
 } from "./normalize";
-import { draftPrompt, refinePrompt, resourcePickPrompt, retryNote, roadmapPrompt, storyPrompt, transcribePrompt, costResearchPrompt, COST_FOCUSES, type CostFocus } from "./prompts";
+import { draftPrompt, refinePrompt, resourcePickPrompt, retryNote, roadmapPrompt, storyPrompt, transcribePrompt, costResearchPrompt, savingsPrompt, COST_FOCUSES, type CostFocus } from "./prompts";
 import {
   ProviderError,
   buildTargets,
@@ -328,7 +330,7 @@ export async function generateRoadmap(
 
 // ───────────────────────── Riset biaya besar (kuliah, hidup, visa…) ─────────────────────────
 
-export type CostResearch = { extras: CostExtra[]; status: "selesai" | "kosong"; provider: "gemini" | "openrouter" };
+export type CostResearch = { extras: CostExtra[]; savings: SavingOption[]; status: "selesai" | "kosong"; provider: "gemini" | "openrouter" };
 
 const COST_CALL_MS = 45_000;
 const GEMINI_REDIRECT = "vertexaisearch.cloud.google.com";
@@ -348,7 +350,7 @@ const extraId = (label: string, index: number) =>
  * Usulan tanpa sumber yang cocok dibuang.
  */
 async function sourceFor(
-  proposal: CostProposal,
+  site: string,
   answer: GroundedAnswer,
   deps: Pick<AiDeps, "fetch">,
   signal: AbortSignal,
@@ -357,8 +359,8 @@ async function sourceFor(
     const viaGemini = hostOf(source.uri) === GEMINI_REDIRECT;
     // Gemini: judul sumber berisi domain asal; OpenRouter/Exa: URL asli.
     const host = viaGemini ? bareHost(source.title) : hostOf(source.uri);
-    if (!sameSite(host, proposal.site)) continue;
-    const url = viaGemini ? await verify(source.uri, proposal.site, deps, signal) : cleanUrl(source.uri);
+    if (!sameSite(host, site)) continue;
+    const url = viaGemini ? await verify(source.uri, site, deps, signal) : cleanUrl(source.uri);
     if (url && isPublicHttps(url)) return { url, title: viaGemini ? host : source.title.slice(0, 120) };
   }
   return null;
@@ -366,20 +368,21 @@ async function sourceFor(
 
 const bareHost = (title: string) => title.trim().toLowerCase().replace(/^www\./, "").split(/[/\s]/)[0];
 
-/** Satu pencarian terfokus: rantai provider + coba ulang bila JSON tidak valid. null bila semua gagal. */
-async function researchFocus(
-  input: CostResearchRequest,
-  focus: CostFocus,
+/**
+ * Satu pencarian web + jawaban JSON: rantai provider, coba ulang bila jawaban
+ * kosong/galat sementara atau JSON tidak valid. null bila semua gagal.
+ */
+async function searchJson<T>(
+  base: Prompt,
+  label: string,
+  parse: (raw: unknown) => T[] | null,
   deps: AiDeps,
   config: ReturnType<typeof readAiConfig>,
-  usdRate: number | undefined,
-): Promise<{ extras: CostExtra[]; provider: "gemini" | "openrouter" } | null> {
-  const today = new Date(deps.now()).toISOString().slice(0, 10);
+): Promise<{ items: T[]; answer: GroundedAnswer; provider: "gemini" | "openrouter"; signal: AbortSignal } | null> {
   const deadline = deps.now() + deps.deadlineMs;
   const stopped = new Set<string>();
   let attemptsLeft = MAX_ATTEMPTS;
   let issues: string | null = null;
-  const base = costResearchPrompt(input, focus);
 
   for (const target of buildTargets(config)) {
     if (stopped.has(target.provider)) continue;
@@ -395,7 +398,7 @@ async function researchFocus(
             ? await callGeminiWithSearch(config.geminiKey!, target.model, prompt, { fetch: deps.fetch, signal })
             : await callOpenRouterWithSearch(config.openrouterKey!, target.model, prompt, { fetch: deps.fetch, signal });
       } catch (error) {
-        console.warn(`[ai:biaya:${focus}] ${target.provider}/${target.model} gagal:`, error instanceof Error ? error.message : error);
+        console.warn(`[ai:${label}] ${target.provider}/${target.model} gagal:`, error instanceof Error ? error.message : error);
         if (error instanceof ProviderError && error.kind === "stop-provider") {
           stopped.add(target.provider);
           break;
@@ -405,52 +408,94 @@ async function researchFocus(
         continue;
       }
       attemptsLeft -= 1;
-
-      let proposals: CostProposal[] | null = null;
+      let items: T[] | null = null;
       try {
-        proposals = normalizeCostProposals(extractJson(answer.text));
+        items = parse(extractJson(answer.text));
       } catch {
-        proposals = null;
+        items = null;
       }
-      if (!proposals) {
-        issues = 'tidak ada blok JSON {"items": [...]} yang valid di akhir jawaban';
+      if (!items) {
+        issues = "tidak ada blok JSON yang valid sesuai format di akhir jawaban";
         continue;
       }
-
-      const extras: CostExtra[] = [];
-      await Promise.all(
-        proposals.map(async (p, index) => {
-          const source = await sourceFor(p, answer, deps, signal).catch(() => null);
-          const idr = toIdrRange(p.min, p.max, p.currency, usdRate);
-          if (!source || !idr) return;
-          const note = [p.note, idr.converted ? `Dikonversi dari ${p.currency} dengan kurs perkiraan.` : ""]
-            .filter(Boolean)
-            .join(" ")
-            .slice(0, 200);
-          const parsed = CostExtraSchema.safeParse({
-            id: `${focus}-${extraId(p.label, index)}`.slice(0, 48).replace(/-+$/, ""),
-            label: p.label,
-            category: p.category,
-            min: idr.min,
-            max: idr.max,
-            unit: p.unit,
-            qty: p.qty,
-            included: true,
-            amount: null,
-            note,
-            sourceUrl: source.url,
-            sourceTitle: source.title,
-            checkedAt: today,
-          });
-          if (parsed.success) extras[index] = parsed.data;
-        }),
-      );
-      const kept = extras.filter(Boolean);
-      console.info(`[ai:biaya:${focus}] ${target.provider}: ${kept.length}/${proposals.length} usulan bersumber`);
-      return { extras: kept, provider: target.provider };
+      return { items, answer, provider: target.provider, signal };
     }
   }
   return null;
+}
+
+/** Satu fokus biaya: usulan → dicocokkan ke sumber pencarian → rupiah → CostExtra. */
+async function researchFocus(
+  input: CostResearchRequest,
+  focus: CostFocus,
+  deps: AiDeps,
+  config: ReturnType<typeof readAiConfig>,
+  usdRate: number | undefined,
+): Promise<{ extras: CostExtra[]; provider: "gemini" | "openrouter" } | null> {
+  const found = await searchJson(costResearchPrompt(input, focus), `biaya:${focus}`, normalizeCostProposals, deps, config);
+  if (!found) return null;
+  const today = new Date(deps.now()).toISOString().slice(0, 10);
+  const extras: CostExtra[] = [];
+  await Promise.all(
+    found.items.map(async (p, index) => {
+      const source = await sourceFor(p.site, found.answer, deps, found.signal).catch(() => null);
+      const idr = toIdrRange(p.min, p.max, p.currency, usdRate);
+      if (!source || !idr) return;
+      const note = [p.note, idr.converted ? `Dikonversi dari ${p.currency} dengan kurs perkiraan.` : ""]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 200);
+      const parsed = CostExtraSchema.safeParse({
+        id: `${focus}-${extraId(p.label, index)}`.slice(0, 48).replace(/-+$/, ""),
+        label: p.label,
+        category: p.category,
+        min: idr.min,
+        max: idr.max,
+        unit: p.unit,
+        qty: p.qty,
+        included: true,
+        amount: null,
+        note,
+        sourceUrl: source.url,
+        sourceTitle: source.title,
+        checkedAt: today,
+      });
+      if (parsed.success) extras[index] = parsed.data;
+    }),
+  );
+  const kept = extras.filter(Boolean);
+  console.info(`[ai:biaya:${focus}] ${found.provider}: ${kept.length}/${found.items.length} usulan bersumber`);
+  return { extras: kept, provider: found.provider };
+}
+
+/** Opsi lebih hemat (beasiswa, bantuan biaya, alternatif murah): hanya yang cocok dengan sumber pencarian. */
+async function researchSavings(
+  input: CostResearchRequest,
+  deps: AiDeps,
+  config: ReturnType<typeof readAiConfig>,
+): Promise<{ savings: SavingOption[]; provider: "gemini" | "openrouter" } | null> {
+  const found = await searchJson(savingsPrompt(input), "hemat", normalizeSavingProposals, deps, config);
+  if (!found) return null;
+  const savings: SavingOption[] = [];
+  await Promise.all(
+    found.items.map(async (p, index) => {
+      const source = await sourceFor(p.site, found.answer, deps, found.signal).catch(() => null);
+      if (!source) return;
+      const parsed = SavingOptionSchema.safeParse({
+        id: `hemat-${extraId(p.title, index)}`.slice(0, 48).replace(/-+$/, ""),
+        title: p.title,
+        kind: p.kind,
+        covers: p.covers,
+        requirement: p.requirement,
+        sourceUrl: source.url,
+        sourceTitle: source.title,
+      });
+      if (parsed.success) savings[index] = parsed.data;
+    }),
+  );
+  const kept = savings.filter(Boolean);
+  console.info(`[ai:hemat] ${found.provider}: ${kept.length}/${found.items.length} opsi bersumber`);
+  return { savings: kept, provider: found.provider };
 }
 
 /**
@@ -501,11 +546,12 @@ export async function researchCosts(input: CostResearchRequest, partial: Partial
   if (config.provider === "mock") throw new AiUnavailableError();
   const usdRate = Number(deps.env.PRICE_USD_IDR) > 0 ? Number(deps.env.PRICE_USD_IDR) : undefined;
 
-  const results = await Promise.all(
-    (Object.keys(COST_FOCUSES) as CostFocus[]).map((focus) => researchFocus(input, focus, deps, config, usdRate)),
-  );
+  const [savingsResult, ...results] = await Promise.all([
+    researchSavings(input, deps, config),
+    ...(Object.keys(COST_FOCUSES) as CostFocus[]).map((focus) => researchFocus(input, focus, deps, config, usdRate)),
+  ]);
   const ok = results.filter((r) => r !== null);
-  if (ok.length === 0) throw new AiUnavailableError();
+  if (ok.length === 0 && !savingsResult) throw new AiUnavailableError();
 
   const seen = new Set<string>();
   const extras: CostExtra[] = [];
@@ -517,5 +563,10 @@ export async function researchCosts(input: CostResearchRequest, partial: Partial
     seen.add(extra.id);
     extras.push(extra);
   }
-  return { extras: extras.slice(0, 10).map(markProofOfFunds), status: extras.length ? "selesai" : "kosong", provider: ok[0].provider };
+  return {
+    extras: extras.slice(0, 10).map(markProofOfFunds),
+    savings: (savingsResult?.savings ?? []).slice(0, 6),
+    status: extras.length || savingsResult?.savings.length ? "selesai" : "kosong",
+    provider: ok[0]?.provider ?? savingsResult!.provider,
+  };
 }

@@ -11,8 +11,10 @@ import {
   type StoryKind,
   EXTRA_CATEGORIES,
   EXTRA_UNITS,
+  SAVING_KINDS,
   type ExtraCategory,
   type ExtraUnit,
+  type SavingKind,
 } from "../types";
 import { cleanTags } from "../stories";
 
@@ -426,6 +428,38 @@ export function normalizeCostProposals(raw: unknown): CostProposal[] | null {
         : (UNIT_ALIASES.find(([re]) => re.test(unitText))?.[1] ?? "sekali"),
       qty: Math.min(120, Math.max(1, qty)),
       note: str(entry.catatan ?? entry.note ?? entry.keterangan, 150) ?? "",
+      site,
+    });
+  }
+  return out;
+}
+
+export type SavingProposal = { title: string; kind: SavingKind; covers: string; requirement: string; site: string };
+
+const SAVING_ALIASES: [RegExp, SavingKind][] = [
+  [/beasiswa|scholarship|fellowship/i, "beasiswa"],
+  [/gratis|free|tanpa biaya/i, "gratis"],
+  [/bantuan|subsidi|keringanan|kip|grant|aid/i, "bantuan"],
+];
+
+export function normalizeSavingProposals(raw: unknown): SavingProposal[] | null {
+  const root = camelizeKeys(raw);
+  const list = Array.isArray(root) ? root : isObj(root) ? (root.opsi ?? root.options ?? root.items) : null;
+  if (!Array.isArray(list)) return null;
+  const out: SavingProposal[] = [];
+  for (const entry of list.slice(0, 6)) {
+    if (!isObj(entry)) continue;
+    const title = str(entry.judul ?? entry.title ?? entry.nama, 90);
+    const site = bareSite(entry.situs ?? entry.site ?? entry.sumber);
+    if (!title || !site.includes(".")) continue;
+    const kindText = String(entry.jenis ?? entry.kind ?? "");
+    out.push({
+      title,
+      kind: (SAVING_KINDS as readonly string[]).includes(kindText)
+        ? (kindText as SavingKind)
+        : (SAVING_ALIASES.find(([re]) => re.test(`${kindText} ${title}`))?.[1] ?? "lebih-murah"),
+      covers: str(entry.menanggung ?? entry.covers ?? entry.manfaat, 200) ?? "",
+      requirement: str(entry.syarat ?? entry.requirement ?? entry.requirements, 200) ?? "",
       site,
     });
   }

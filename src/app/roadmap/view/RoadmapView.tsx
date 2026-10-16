@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { readDraftSession, subscribeDraftSession } from "@/lib/draft-session";
 
 const COST_SAVE_DELAY_MS = 700;
 import { CostCalculator } from "@/components/CostCalculator";
@@ -115,6 +116,13 @@ function RoadmapJourney({ roadmap }: { roadmap: RoadmapRow }) {
       }
     });
   };
+
+  // Draf plan roadmap ini masih ada di perangkat → bisa minta plan lebih hemat di Drafting.
+  const canRevise = useSyncExternalStore(
+    subscribeDraftSession,
+    () => readDraftSession()?.roadmapId === roadmap.id,
+    () => false,
+  );
 
   // Kalkulator biaya: disimpan setelah pengguna berhenti mengetik sebentar.
   const [costs, setCosts] = useState<RoadmapCosts>(roadmap.costs);
@@ -263,6 +271,7 @@ function RoadmapJourney({ roadmap }: { roadmap: RoadmapRow }) {
           costs={costs}
           onChange={changeCosts}
           saveLabel={costLabel}
+          canRevise={canRevise}
           research={{
             title: roadmap.title,
             dream: roadmap.dream,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChatPanel } from "@/components/draft/ChatPanel";
 import { ProfileCard } from "@/components/draft/ProfileCard";
 import { AlertIcon, ArrowLeftIcon, ArrowRightIcon } from "@/components/icons";
@@ -16,15 +16,38 @@ import { play } from "@/lib/sound";
 
 type Ready = DraftSession & { draft: Draft };
 
-export function DraftWorkspace({ onBuild }: { onBuild: (session: Ready) => void }) {
+/** Permintaan dari tombol "Minta plan yang lebih hemat" di roadmap. */
+export const CHEAPER_REQUEST =
+  "Cari opsi yang lebih murah: utamakan beasiswa, bantuan biaya (misalnya golongan UKT rendah atau KIP Kuliah bila relevan), kampus atau jalur yang lebih terjangkau, dan sumber belajar gratis.";
+
+export function DraftWorkspace({
+  onBuild,
+  autoRequest,
+  onAutoRequestSent,
+}: {
+  onBuild: (session: Ready) => void;
+  /** Pesan chat yang langsung dikirim saat halaman dibuka (mis. dari roadmap). */
+  autoRequest?: string;
+  onAutoRequestSent?: () => void;
+}) {
   const hydrated = useHydrated();
   if (!hydrated) return <DraftSkeleton />;
   const session = readDraftSession();
   if (!session?.draft) return <EmptyDraft />;
-  return <Workspace initial={session as Ready} onBuild={onBuild} />;
+  return <Workspace initial={session as Ready} onBuild={onBuild} autoRequest={autoRequest} onAutoRequestSent={onAutoRequestSent} />;
 }
 
-function Workspace({ initial, onBuild }: { initial: Ready; onBuild: (session: Ready) => void }) {
+function Workspace({
+  initial,
+  onBuild,
+  autoRequest,
+  onAutoRequestSent,
+}: {
+  initial: Ready;
+  onBuild: (session: Ready) => void;
+  autoRequest?: string;
+  onAutoRequestSent?: () => void;
+}) {
   const [session, setSession] = useState<Ready>(initial);
   const [updatedIds, setUpdatedIds] = useState<Set<PlanId>>(new Set());
   const [pending, setPending] = useState(false);
@@ -83,6 +106,21 @@ function Workspace({ initial, onBuild }: { initial: Ready; onBuild: (session: Re
       roadmapId: null,
     });
   };
+
+  // Sekali saja: kirim permintaan dari roadmap (mis. plan lebih hemat) lalu bersihkan URL.
+  const autoSentRef = useRef(false);
+  useEffect(() => {
+    if (!autoRequest || autoSentRef.current) return;
+    // Penanda dipasang di dalam timer agar efek ganda Strict Mode (dev) tidak membatalkannya.
+    const timer = setTimeout(() => {
+      if (autoSentRef.current) return;
+      autoSentRef.current = true;
+      onAutoRequestSent?.();
+      void sendChat(autoRequest);
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dijalankan sekali saat draf terbuka
+  }, [autoRequest]);
 
   const build = () => {
     if (!selected) {

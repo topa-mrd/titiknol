@@ -35,12 +35,24 @@ const EXTRAS = [
   },
 ];
 
+const SAVINGS = [
+  {
+    id: "hemat-stuned-1",
+    title: "StuNed Scholarship",
+    kind: "beasiswa",
+    covers: "Tuition fee, biaya hidup, visa, dan tiket.",
+    requirement: "WNI, lulusan S1 yang relevan, kemampuan bahasa Inggris.",
+    sourceUrl: "https://www.nesoindonesia.or.id/beasiswa/stuned",
+    sourceTitle: "Nuffic Neso Indonesia",
+  },
+];
+
 async function realAi(page: Page) {
   const calls: unknown[] = [];
   await page.route("**/api/status", (route) => route.fulfill({ json: { ai: "openrouter", supabase: false } }));
   await page.route("**/api/costs", async (route) => {
     calls.push(route.request().postDataJSON());
-    await route.fulfill({ json: { extras: EXTRAS, status: "selesai", provider: "openrouter", fallback: false } });
+    await route.fulfill({ json: { extras: EXTRAS, savings: SAVINGS, status: "selesai", provider: "openrouter", fallback: false } });
   });
   return calls;
 }
@@ -108,5 +120,26 @@ test.describe("Kalkulator: biaya besar lainnya", () => {
     fail = false;
     await big.getByRole("button", { name: "Coba lagi" }).click();
     await expect(big.getByRole("listitem").filter({ hasText: "Tuition fee S2" })).toBeVisible();
+  });
+
+  test("pengingat selalu tampil; opsi lebih hemat bersumber; minta plan hemat dikirim ke Drafting", async ({ page }) => {
+    await realAi(page);
+    await createRoadmap(page);
+    const big = page.getByRole("region", { name: "Biaya besar lainnya" });
+    await expect(big).toContainText("Patokan, bukan kepastian.");
+    await expect(big.getByRole("listitem").filter({ hasText: "Biaya hidup mahasiswa" })).toContainText("Bisa meleset");
+    await expect(big.getByRole("listitem").filter({ hasText: "Tuition fee S2" })).toContainText("golongan UKT, bantuan biaya, atau beasiswa");
+
+    const save = page.getByRole("region", { name: "Opsi lebih hemat" });
+    const stuned = save.getByRole("listitem").filter({ hasText: "StuNed Scholarship" });
+    await expect(stuned).toContainText("Beasiswa");
+    await expect(stuned).toContainText("Menanggung: Tuition fee, biaya hidup, visa, dan tiket.");
+    await expect(stuned.getByRole("link", { name: /nesoindonesia\.or\.id/ })).toHaveAttribute("href", SAVINGS[0].sourceUrl);
+
+    // Draf roadmap ini ada di perangkat → bisa minta plan yang lebih hemat (diproses AI di Drafting).
+    await save.getByRole("link", { name: "Minta plan yang lebih hemat" }).click();
+    await expect(page).toHaveURL(/\/draft$/);
+    await expect(page.getByText(/Cari opsi yang lebih murah: utamakan beasiswa/).last()).toBeVisible();
+    await expect(page.getByText(/opsi yang lebih hemat/).last()).toBeVisible();
   });
 });

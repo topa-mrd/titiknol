@@ -11,7 +11,12 @@ export function POST(request: Request) {
     CostResearchRequestSchema,
     async (input) => {
       const result = await researchCosts(input);
-      return { data: { extras: result.extras, status: result.status }, provider: result.provider, model: null, fallback: false };
+      return {
+        data: { extras: result.extras, savings: result.savings, status: result.status },
+        provider: result.provider,
+        model: null,
+        fallback: false,
+      };
     },
     { unavailableMessage: "Biaya kuliah dan biaya hidup belum bisa dicari sekarang. Coba lagi nanti, atau isi perkiraanmu sendiri." },
   );
