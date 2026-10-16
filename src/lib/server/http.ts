@@ -16,13 +16,13 @@ export function jsonError(status: number, error: string, headers: HeadersInit = 
 
 export type Parsed<T> = { ok: true; data: T } | { ok: false; response: Response };
 
-export async function readJson<T>(request: Request, schema: ZodType<T>): Promise<Parsed<T>> {
+export async function readJson<T>(request: Request, schema: ZodType<T>, maxBytes = MAX_BODY_BYTES): Promise<Parsed<T>> {
   const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > MAX_BODY_BYTES) {
+  if (declared > maxBytes) {
     return { ok: false, response: jsonError(413, "Isian terlalu panjang. Coba ringkas ceritamu lalu kirim lagi.") };
   }
   const text = await request.text().catch(() => "");
-  if (text.length > MAX_BODY_BYTES) {
+  if (text.length > maxBytes) {
     return { ok: false, response: jsonError(413, "Isian terlalu panjang. Coba ringkas ceritamu lalu kirim lagi.") };
   }
 

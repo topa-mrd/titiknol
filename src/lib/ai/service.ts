@@ -9,6 +9,7 @@ import {
   ResourcePicksSchema,
   RoadmapDraftSchema,
   StoryDraftSchema,
+  TranscriptSchema,
   type AiProvider,
   type ChatMessage,
   type Draft,
@@ -23,6 +24,8 @@ import {
   type RoadmapDraft,
   type StoryDraft,
   type StoryDraftRequest,
+  type TranscribeRequest,
+  type Transcript,
 } from "../types";
 import { mockDraft, mockRefine, mockRoadmap, mockStory } from "./mock";
 import {
@@ -32,8 +35,9 @@ import {
   normalizeRefine,
   normalizeRoadmapDraft,
   normalizeStoryDraft,
+  normalizeTranscript,
 } from "./normalize";
-import { draftPrompt, refinePrompt, resourcePickPrompt, retryNote, roadmapPrompt, storyPrompt } from "./prompts";
+import { draftPrompt, refinePrompt, resourcePickPrompt, retryNote, roadmapPrompt, storyPrompt, transcribePrompt } from "./prompts";
 import { ProviderError, buildTargets, callTarget, readAiConfig, type Prompt } from "./providers";
 
 /**
@@ -97,6 +101,8 @@ type Task<T> = {
    * Hanya untuk cadangan yang berisi data asli (mis. pilihan sumber dari database), bukan jawaban tiruan.
    */
   alwaysFallback?: boolean;
+  /** true = tidak ada jawaban tiruan yang jujur (mis. transkripsi): mode demo & kegagalan → AiUnavailableError. */
+  noMock?: boolean;
 };
 
 function describeIssues(error: { issues: { path: PropertyKey[]; message: string }[] }): string {
@@ -109,6 +115,7 @@ function describeIssues(error: { issues: { path: PropertyKey[]; message: string 
 async function run<T>(task: Task<T>, deps: AiDeps): Promise<AiResult<T>> {
   const config = readAiConfig(deps.env);
   if (config.provider === "mock") {
+    if (task.noMock) throw new AiUnavailableError();
     return { data: task.mock(), provider: "mock", model: null, fallback: false };
   }
 
@@ -158,7 +165,7 @@ async function run<T>(task: Task<T>, deps: AiDeps): Promise<AiResult<T>> {
     break;
   }
 
-  if (!config.fallbackToMock && !task.alwaysFallback) throw new AiUnavailableError();
+  if (task.noMock || (!config.fallbackToMock && !task.alwaysFallback)) throw new AiUnavailableError();
   console.warn(`[ai:${task.name}] semua percobaan gagal, memakai jawaban tiruan`);
   return { data: task.mock(), provider: "mock", model: null, fallback: true };
 }
@@ -203,6 +210,21 @@ export function generateStory(input: StoryDraftRequest, deps: Partial<AiDeps> = 
       normalize: (raw) => normalizeStoryDraft(raw, input.kind),
       schema: StoryDraftSchema,
       mock: () => mockStory(input),
+    },
+    { ...defaults(), ...deps },
+  );
+}
+
+/** Rekaman suara → teks, untuk browser yang tidak punya pengenal suara (Brave, Firefox). */
+export function transcribeAudio(input: TranscribeRequest, deps: Partial<AiDeps> = {}): Promise<AiResult<Transcript>> {
+  return run(
+    {
+      name: "transcribe",
+      prompt: transcribePrompt(input),
+      normalize: normalizeTranscript,
+      schema: TranscriptSchema,
+      mock: () => ({ text: "" }),
+      noMock: true,
     },
     { ...defaults(), ...deps },
   );

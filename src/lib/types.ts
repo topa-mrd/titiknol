@@ -667,4 +667,24 @@ export type AiProvider = (typeof AI_PROVIDERS)[number];
 /** Penanda asal jawaban AI yang ikut di setiap respons API. */
 export type AiMeta = { provider: AiProvider; fallback: boolean };
 
+// ───────────────────────── Suara → teks (cadangan saat browser tidak punya pengenal suara) ─────────────────────────
+
+/** Rekaman maksimal per sekali tekan (detik). WAV 16 kHz mono ≈ 32 KB/detik. */
+export const MAX_RECORDING_SEC = 60;
+/** base64 WAV 60 detik ≈ 2,6 juta karakter; beri ruang sedikit. */
+const MAX_AUDIO_BASE64 = 2_800_000;
+
+export const TranscribeRequestSchema = z.object({
+  audio: z
+    .string()
+    .min(1000, "Rekaman terlalu pendek. Tekan mikrofon lalu bicara beberapa kalimat.")
+    .max(MAX_AUDIO_BASE64, "Rekaman terlalu panjang. Maksimal satu menit per rekaman.")
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/, "Rekaman rusak. Coba rekam lagi."),
+  mime: z.literal("audio/wav"),
+});
+export type TranscribeRequest = z.infer<typeof TranscribeRequestSchema>;
+
+export const TranscriptSchema = z.object({ text: z.string().trim().max(INPUT_LIMIT) });
+export type Transcript = z.infer<typeof TranscriptSchema>;
+
 export type StatusResponse = { ai: AiProvider; supabase: boolean };

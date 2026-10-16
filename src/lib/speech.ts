@@ -60,6 +60,12 @@ const GENERIC_ERROR = "Input suara berhenti karena kendala teknis. Tekan tombol 
 const FLAPPING_ERROR =
   "Mikrofon terus berhenti sendiri. Cek apakah mikrofon dipakai aplikasi lain, lalu coba lagi atau ketik saja.";
 
+/**
+ * Error yang berarti layanan suara browser memang tidak tersedia (mis. Brave
+ * tidak tersambung ke layanan suara Google). Pemanggil bisa beralih ke mode rekam.
+ */
+export const UNAVAILABLE_ERRORS = new Set(["network", "service-not-allowed", "language-not-supported"]);
+
 /** Error yang bukan masalah: hening sejenak atau dihentikan oleh kode kita sendiri. */
 const BENIGN_ERRORS = new Set(["no-speech", "aborted"]);
 
@@ -67,7 +73,16 @@ const BENIGN_ERRORS = new Set(["no-speech", "aborted"]);
 const MAX_RAPID_RESTARTS = 4;
 const RAPID_MS = 1_500;
 
-export function useSpeechRecognition({ onFinal, lang = "id-ID" }: { onFinal: (text: string) => void; lang?: string }) {
+export function useSpeechRecognition({
+  onFinal,
+  onUnavailable,
+  lang = "id-ID",
+}: {
+  onFinal: (text: string) => void;
+  /** Dipanggil saat layanan suara browser tidak tersedia; kembalikan true bila sudah ditangani (pesan error tidak ditampilkan). */
+  onUnavailable?: (code: string) => boolean;
+  lang?: string;
+}) {
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -77,10 +92,12 @@ export function useSpeechRecognition({ onFinal, lang = "id-ID" }: { onFinal: (te
   const startedAtRef = useRef(0);
   const rapidRestartsRef = useRef(0);
   const onFinalRef = useRef(onFinal);
+  const onUnavailableRef = useRef(onUnavailable);
 
   useEffect(() => {
     onFinalRef.current = onFinal;
-  }, [onFinal]);
+    onUnavailableRef.current = onUnavailable;
+  }, [onFinal, onUnavailable]);
 
   const finish = useCallback((message: string | null) => {
     wantedRef.current = false;
@@ -119,7 +136,8 @@ export function useSpeechRecognition({ onFinal, lang = "id-ID" }: { onFinal: (te
 
     recognition.onerror = (event) => {
       if (BENIGN_ERRORS.has(event.error)) return;
-      finish(ERROR_MESSAGES[event.error] ?? GENERIC_ERROR);
+      const handled = UNAVAILABLE_ERRORS.has(event.error) && onUnavailableRef.current?.(event.error) === true;
+      finish(handled ? null : (ERROR_MESSAGES[event.error] ?? GENERIC_ERROR));
       recognition.abort();
     };
 

@@ -90,7 +90,13 @@ export function classifyHttpError(status: number, body: string): ProviderErrorKi
   return "next-model";
 }
 
-export type Prompt = { system: string; user: string };
+export type Prompt = {
+  system: string;
+  user: string;
+  /** Lampiran audio (base64) untuk transkripsi. */
+  audio?: { data: string; mime: "audio/wav" };
+  temperature?: number;
+};
 export type CallOptions = { signal: AbortSignal; fetch: typeof fetch; siteUrl?: string };
 
 async function failFromResponse(provider: string, res: Response): Promise<never> {
@@ -106,8 +112,16 @@ async function callGemini(key: string, model: string, prompt: Prompt, opts: Call
     headers: { "content-type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: prompt.system }] },
-      contents: [{ role: "user", parts: [{ text: prompt.user }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.7, maxOutputTokens: 8192 },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt.user },
+            ...(prompt.audio ? [{ inline_data: { mime_type: prompt.audio.mime, data: prompt.audio.data } }] : []),
+          ],
+        },
+      ],
+      generationConfig: { responseMimeType: "application/json", temperature: prompt.temperature ?? 0.7, maxOutputTokens: 8192 },
     }),
   });
   if (!res.ok) await failFromResponse("gemini", res);
@@ -143,10 +157,18 @@ async function callOpenRouter(key: string, model: string, prompt: Prompt, opts: 
       model,
       messages: [
         { role: "system", content: prompt.system },
-        { role: "user", content: prompt.user },
+        {
+          role: "user",
+          content: prompt.audio
+            ? [
+                { type: "text", text: prompt.user },
+                { type: "input_audio", input_audio: { data: prompt.audio.data, format: "wav" } },
+              ]
+            : prompt.user,
+        },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.7,
+      temperature: prompt.temperature ?? 0.7,
     }),
   });
   if (!res.ok) await failFromResponse("openrouter", res);

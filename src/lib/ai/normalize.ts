@@ -1,5 +1,6 @@
 import {
   COST_LEVELS,
+  INPUT_LIMIT,
   LIMITS,
   MAX_NEEDS_PER_STEP,
   PLAN_IDS,
@@ -333,4 +334,10 @@ export function normalizeStoryDraft(raw: unknown, kind: StoryKind): unknown {
     body: text(d.body ?? d.isi ?? d.content ?? d.article, LIMITS.story.body),
     tags: storyTags(d.tags ?? d.tag ?? d.label, kind),
   };
+}
+
+/** Transkrip: ambil teks dari bentuk apa pun ({text}, {transcript}, string), rapikan spasi. */
+export function normalizeTranscript(raw: unknown): unknown {
+  const d = typeof raw === "string" ? { text: raw } : unwrap(camelizeKeys(raw), "text");
+  return { text: str(d.text ?? d.transcript ?? d.transkrip, INPUT_LIMIT) ?? "" };
 }

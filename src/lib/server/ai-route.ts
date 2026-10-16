@@ -4,7 +4,7 @@ import { AiUnavailableError, type AiResult } from "../ai/service";
 import { clientIp, json, jsonError, readJson } from "./http";
 import { createRateLimiter } from "./rate-limit";
 
-/** Dibagi oleh /api/draft, /api/refine, /api/roadmap, /api/story: 30 panggilan AI per 10 menit per IP. */
+/** Dibagi oleh /api/draft, /api/refine, /api/roadmap, /api/story, /api/transcribe: 30 panggilan AI per 10 menit per IP. */
 const limiter = createRateLimiter({ limit: 30, windowMs: 10 * 60_000 });
 
 /**
@@ -15,8 +15,9 @@ export async function handleAiRoute<In, Out extends object>(
   request: Request,
   schema: ZodType<In>,
   run: (input: In) => Promise<AiResult<Out>>,
+  options: { maxBytes?: number; unavailableMessage?: string } = {},
 ): Promise<Response> {
-  const parsed = await readJson(request, schema);
+  const parsed = await readJson(request, schema, options.maxBytes);
   if (!parsed.ok) return parsed.response;
 
   if (readAiConfig().provider !== "mock") {
@@ -37,7 +38,7 @@ export async function handleAiRoute<In, Out extends object>(
     return json({ ...result.data, provider: result.provider, fallback: result.fallback, ...extra });
   } catch (error) {
     if (error instanceof AiUnavailableError) {
-      return jsonError(503, "AI sedang sibuk atau tidak bisa dihubungi. Tunggu sebentar lalu coba lagi.");
+      return jsonError(503, options.unavailableMessage ?? "AI sedang sibuk atau tidak bisa dihubungi. Tunggu sebentar lalu coba lagi.");
     }
     console.error("[api] galat tak terduga:", error);
     return jsonError(500, "Terjadi kesalahan di server. Coba lagi sebentar lagi.");

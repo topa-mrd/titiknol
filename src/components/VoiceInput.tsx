@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type KeyboardEvent, type Ref } from "react";
-import { appendTranscript, useSpeechRecognition, useSpeechSupported } from "@/lib/speech";
+import { appendTranscript } from "@/lib/speech";
+import { MAX_RECORDING_SEC } from "@/lib/types";
+import { useVoiceInput } from "@/lib/voice";
 import { useHydrated } from "@/lib/use-hydrated";
 import { AlertIcon, MicIcon, MicOffIcon, StopIcon } from "./icons";
 
@@ -32,9 +34,7 @@ export function VoiceInput({
   onSubmitShortcut,
   textareaRef,
 }: VoiceInputProps) {
-  const supported = useSpeechSupported();
-  // Sebelum hidrasi dukungan belum diketahui: jangan tampilkan tombol maupun pesan "tidak didukung".
-  const unsupported = useHydrated() && !supported;
+  const hydrated = useHydrated();
   const valueRef = useRef(value);
   useEffect(() => {
     valueRef.current = value;
@@ -49,7 +49,12 @@ export function VoiceInput({
     [maxLength, onChange],
   );
 
-  const { listening, interim, error, start, stop } = useSpeechRecognition({ onFinal: handleFinal });
+  const voice = useVoiceInput({ onFinal: handleFinal });
+  const { listening, interim, error, start, stop, busy, engine } = voice;
+  // Sebelum hidrasi/cek server, dukungan belum diketahui: jangan tampilkan tombol maupun pesan "tidak didukung".
+  const supported = hydrated && voice.supported === true;
+  const unsupported = hydrated && voice.supported === false;
+  const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && onSubmitShortcut) {
@@ -96,11 +101,12 @@ export function VoiceInput({
             <button
               type="button"
               onClick={listening ? stop : start}
+              disabled={busy}
               aria-pressed={listening}
               className={`relative grid size-16 shrink-0 place-items-center rounded-full text-white transition-[transform,box-shadow,background-color] duration-100 active:translate-y-1 active:shadow-none ${
                 listening
                   ? "bg-danger shadow-[0_5px_0_var(--color-danger-lip)]"
-                  : "bg-link shadow-[0_5px_0_var(--color-link-lip)] hover:brightness-110"
+                  : "bg-link shadow-[0_5px_0_var(--color-link-lip)] hover:brightness-110 disabled:opacity-60"
               }`}
             >
               {listening && (
@@ -121,9 +127,19 @@ export function VoiceInput({
             <span aria-hidden="true" className="size-16" />
           )}
 
+          {/* Jam rekaman berubah tiap detik; pembaca layar cukup diberi tahu perubahan keadaannya. */}
+          <span aria-live="polite" className="sr-only">
+            {listening && engine === "rekam" ? "Merekam." : busy ? "Menuliskan suaramu." : ""}
+          </span>
           <span id={statusId} className="flex min-w-0 flex-1 items-center gap-2 text-sm font-emphasis">
-            {listening ? (
+            {listening && engine === "rekam" ? (
+              <span className="text-danger">
+                Merekam {clock(voice.seconds)} / {clock(MAX_RECORDING_SEC)} · tekan stop kalau selesai
+              </span>
+            ) : listening ? (
               <span className="text-danger">Mendengarkan… bicara dengan santai</span>
+            ) : busy ? (
+              <span className="text-link motion-safe:animate-pulse">Menuliskan suaramu…</span>
             ) : supported ? (
               <span aria-hidden="true" className="text-ink-muted">
                 Ketuk mikrofon untuk bercerita
