@@ -25,6 +25,7 @@ import {
 import { STORY_KIND_HINT, STORY_KIND_LABEL, STORY_STATUS_LABEL, cleanTags, toTag, type Story } from "@/lib/stories";
 import { LIMITS, StoryDraftSchema, StoryInputSchema, type StoryKind } from "@/lib/types";
 import { useJourneyCompleted } from "@/lib/use-journey";
+import { play } from "@/lib/sound";
 
 const TRANSCRIPT_MAX = 4000;
 const TRANSCRIPT_MIN = 20;
@@ -280,14 +281,20 @@ function TellStep({
 
   const draftWithAi = async () => {
     if (tooShort) {
+      play("galat");
       setError(`Ceritakan sedikit lebih panjang, minimal ${TRANSCRIPT_MIN} karakter.`);
       textareaRef.current?.focus();
       return;
     }
     setError(null);
+    play("maju");
     onBusy();
     const result = await postJson("/api/story", { kind, transcript, authorName: user.name }, StoryDraftSchema);
-    if (!result.ok) return onFailed(result.error);
+    if (!result.ok) {
+      play("galat");
+      return onFailed(result.error);
+    }
+    play("benar");
     onDrafted(
       { ...blank(result.data.body), title: result.data.title, summary: result.data.summary, tags: result.data.tags },
       result.meta.fallback
@@ -319,7 +326,10 @@ function TellStep({
                 name={`${id}-kind`}
                 value={k.value}
                 checked={kind === k.value}
-                onChange={() => onKind(k.value)}
+                onChange={() => {
+                  play("pilih");
+                  onKind(k.value);
+                }}
                 onKeyDown={onKindKey}
                 className="sr-only"
               />
@@ -467,6 +477,7 @@ function EditStep({
     if (!parsed.success) {
       const next = fieldErrors<Field>(parsed.error.issues, FIELD_MESSAGES);
       setErrors(next);
+      play("galat");
       const first = FIELD_ORDER.find((f) => next[f]);
       if (first) document.getElementById(`${id}-${first}`)?.focus();
       return;
@@ -474,8 +485,11 @@ function EditStep({
     setErrors({});
     setBusy(status);
     try {
-      onSaved(await saveStory(parsed.data, form.id ?? undefined));
+      const saved = await saveStory(parsed.data, form.id ?? undefined);
+      play(saved.status === "terbit" ? "selesai" : "benar");
+      onSaved(saved);
     } catch (e) {
+      play("galat");
       setFailure(e instanceof StoreError ? e.message : "Tulisan gagal disimpan. Coba lagi.");
     } finally {
       setBusy(null);
@@ -796,7 +810,11 @@ function MyStoryItem({
   };
 
   const toggle = () =>
-    run(async () => onChanged(await setStoryStatus(story.id, story.status === "terbit" ? "draf" : "terbit")), "Status gagal diubah. Coba lagi.");
+    run(async () => {
+      const updated = await setStoryStatus(story.id, story.status === "terbit" ? "draf" : "terbit");
+      if (updated.status === "terbit") play("benar");
+      onChanged(updated);
+    }, "Status gagal diubah. Coba lagi.");
   const remove = () =>
     run(async () => {
       await deleteStory(story.id);

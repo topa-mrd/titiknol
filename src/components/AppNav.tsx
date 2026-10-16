@@ -16,17 +16,17 @@ const pill = "inline-flex min-h-10 items-center rounded-full px-3 text-xs font-h
 
 const isActiveAt = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-/** Pintu masuk tahap Share your story (studio menulis). `short` untuk baris atas di layar kecil. */
+/** Pintu masuk tahap Share your story (studio menulis). `short` = tombol ikon untuk baris atas di layar kecil. */
 export function WriteLink({ short = false, className = "" }: { short?: boolean; className?: string }) {
   const pathname = usePathname();
   return (
     <Link
       href="/share"
       aria-current={isActiveAt(pathname, "/share") ? "page" : undefined}
-      className={`${pill} gap-1.5 border-2 border-brand/50 text-brand-ink hover:bg-brand-soft aria-[current=page]:bg-brand-soft ${className}`}
+      className={`${short ? "grid size-10 place-items-center rounded-full" : `${pill} gap-1.5`} border-2 border-brand/50 text-brand-ink hover:bg-brand-soft aria-[current=page]:bg-brand-soft ${className}`}
     >
       <PenIcon className="size-4" strokeWidth={2.25} />
-      {short ? "Tulis" : "Tulis cerita"}
+      {short ? <span className="sr-only">Tulis cerita</span> : "Tulis cerita"}
     </Link>
   );
 }

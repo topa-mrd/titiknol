@@ -11,6 +11,7 @@ import { loginHref } from "@/lib/safe-next";
 import { StoreError, createRoadmap, getRoadmap, getUser } from "@/lib/store";
 import { ResolvedRoadmapSchema } from "@/lib/types";
 import { DraftWorkspace } from "./DraftWorkspace";
+import { play } from "@/lib/sound";
 
 const BUILD_MESSAGES = [
   "Menyiapkan roadmap dari plan pilihanmu…",
@@ -68,6 +69,7 @@ function DraftWithBuild() {
 
       const result = await postJson("/api/roadmap", { profile: session.draft.profile, plan }, ResolvedRoadmapSchema);
       if (!result.ok) {
+        play("galat");
         setPhase({ kind: "error", message: result.error });
         return;
       }
@@ -81,6 +83,8 @@ function DraftWithBuild() {
         steps: result.data.steps,
       });
       updateDraftSession({ roadmapId: row.id });
+      // Momen utama: roadmap pertama jadi.
+      play("selesai");
       router.replace(`/roadmap/view?id=${row.id}`);
     } catch (error) {
       if (error instanceof StoreError && error.code === "auth") {

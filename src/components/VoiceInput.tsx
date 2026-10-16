@@ -6,6 +6,7 @@ import { MAX_RECORDING_SEC } from "@/lib/types";
 import { useVoiceInput } from "@/lib/voice";
 import { useHydrated } from "@/lib/use-hydrated";
 import { AlertIcon, MicIcon, MicOffIcon, StopIcon } from "./icons";
+import { play } from "@/lib/sound";
 
 type VoiceInputProps = {
   id: string;
@@ -100,7 +101,11 @@ export function VoiceInput({
           {supported ? (
             <button
               type="button"
-              onClick={listening ? stop : start}
+              onClick={() => {
+                play(listening ? "berhenti" : "rekam");
+                if (listening) stop();
+                else start();
+              }}
               disabled={busy}
               aria-pressed={listening}
               className={`relative grid size-16 shrink-0 place-items-center rounded-full text-white transition-[transform,box-shadow,background-color] duration-100 active:translate-y-1 active:shadow-none ${

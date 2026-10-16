@@ -13,6 +13,7 @@ import { postJson } from "@/lib/http-client";
 import { DraftSchema, INPUT_LIMIT } from "@/lib/types";
 import { STAGES } from "@/lib/site";
 import { useHydrated } from "@/lib/use-hydrated";
+import { play } from "@/lib/sound";
 
 type Answers = DraftSession["answers"];
 
@@ -80,6 +81,7 @@ function StartForm({ initial }: { initial: DraftSession | null }) {
 
   const validate = (): boolean => {
     if (value.trim().length >= MIN_LENGTH) return true;
+    play("galat");
     setFieldError(question.tooShort);
     textareaRef.current?.focus();
     return false;
@@ -88,12 +90,14 @@ function StartForm({ initial }: { initial: DraftSession | null }) {
   const goTo = (next: 0 | 1) => {
     movedRef.current = true;
     setFieldError(null);
+    if (next > step) play("maju");
     setStep(next);
   };
 
   const submit = async () => {
     if (answers.dream.trim().length < MIN_LENGTH) {
       goTo(0);
+      play("galat");
       setFieldError(QUESTIONS[0].tooShort);
       return;
     }
@@ -110,9 +114,11 @@ function StartForm({ initial }: { initial: DraftSession | null }) {
       return;
     }
 
+    play("maju");
     setPhase({ kind: "loading" });
     const result = await postJson("/api/draft", answers, DraftSchema);
     if (!result.ok) {
+      play("galat");
       setPhase({ kind: "error", message: result.error });
       return;
     }
@@ -132,6 +138,7 @@ function StartForm({ initial }: { initial: DraftSession | null }) {
       });
       return;
     }
+    play("benar");
     router.push("/draft");
   };
 

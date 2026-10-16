@@ -14,8 +14,9 @@ import { buttonClass } from "@/components/ui";
 import { setStepDone, stats, toggleTodo } from "@/lib/progress";
 import { loginHref } from "@/lib/safe-next";
 import { StoreError, getCatalogLinks, getRoadmap, getUser, updateRoadmapCosts, updateRoadmapProgress } from "@/lib/store";
-import type { CatalogLink, Progress, ResolvedStep, RoadmapCosts, RoadmapRow } from "@/lib/types";
+import { todoKey, type CatalogLink, type Progress, type ResolvedStep, type RoadmapCosts, type RoadmapRow } from "@/lib/types";
 import { StageRail } from "@/components/StageRail";
+import { play } from "@/lib/sound";
 
 type State =
   | { kind: "loading" }
@@ -180,6 +181,7 @@ function RoadmapJourney({ roadmap }: { roadmap: RoadmapRow }) {
 
   const handleSetDone = (step: ResolvedStep, done: boolean) => {
     persist((current) => setStepDone(current, step, done));
+    if (done) play("selesai");
     setOpenIndex(null);
     const index = steps.findIndex((s) => s.id === step.id);
     if (done) {
@@ -288,7 +290,10 @@ function RoadmapJourney({ roadmap }: { roadmap: RoadmapRow }) {
         step={openStep}
         index={openIndex ?? 0}
         progress={progress}
-        onToggleTodo={(stepId, i) => persist((current) => toggleTodo(current, stepId, i))}
+        onToggleTodo={(stepId, i) => {
+          if (!progress.doneTodos.includes(todoKey(stepId, i))) play("benar");
+          persist((current) => toggleTodo(current, stepId, i));
+        }}
         onSetDone={handleSetDone}
         onClose={() => setOpenIndex(null)}
       />

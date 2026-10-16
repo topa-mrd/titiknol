@@ -12,6 +12,7 @@ import { postJson } from "@/lib/http-client";
 import { RefineSchema, type ChatMessage, type Draft, type PlanId, type Profile } from "@/lib/types";
 import { useHydrated } from "@/lib/use-hydrated";
 import { StageRail } from "@/components/StageRail";
+import { play } from "@/lib/sound";
 
 type Ready = DraftSession & { draft: Draft };
 
@@ -43,7 +44,10 @@ function Workspace({ initial, onBuild }: { initial: Ready; onBuild: (session: Re
 
   const selectPlan = (id: PlanId) => {
     setPlanError(false);
-    if (id !== selectedPlanId) save({ selectedPlanId: id, roadmapId: null });
+    if (id !== selectedPlanId) {
+      play("pilih");
+      save({ selectedPlanId: id, roadmapId: null });
+    }
   };
 
   const saveProfile = (profile: Profile) => save({ draft: { ...draft, profile }, roadmapId: null });
@@ -61,6 +65,7 @@ function Workspace({ initial, onBuild }: { initial: Ready; onBuild: (session: Re
     setPending(false);
 
     if (!result.ok) {
+      play("galat");
       setSession((prev) => ({ ...prev, messages: before }));
       setChatInput(text);
       setChatError(result.error);
@@ -70,6 +75,7 @@ function Workspace({ initial, onBuild }: { initial: Ready; onBuild: (session: Re
     const { reply, profile, plans } = result.data;
     const changed = plans.filter((p, i) => JSON.stringify(p) !== JSON.stringify(draft.plans[i])).map((p) => p.id);
     setUpdatedIds(new Set(changed));
+    play("benar");
     save({
       draft: { ...draft, profile, plans },
       messages: [...before, userMessage, { role: "assistant" as const, content: reply }].slice(-40),
@@ -80,10 +86,12 @@ function Workspace({ initial, onBuild }: { initial: Ready; onBuild: (session: Re
 
   const build = () => {
     if (!selected) {
+      play("galat");
       setPlanError(true);
       plansRef.current?.querySelector("input")?.focus();
       return;
     }
+    play("maju");
     onBuild(session);
   };
 

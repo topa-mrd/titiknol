@@ -5,6 +5,7 @@ import { StoreError, applyToOpportunity } from "@/lib/store";
 import { ContactSchema, type Application, type Opportunity } from "@/lib/types";
 import { AlertIcon, CloseIcon } from "../icons";
 import { buttonClass } from "../ui";
+import { play } from "@/lib/sound";
 
 type Props = {
   opportunity: Opportunity | null;
@@ -57,7 +58,10 @@ export function ApplyDialog({ opportunity, roadmap, onClose, onApplied }: Props)
     const found = validate();
     setErrors(found);
     setFailure(null);
-    if (Object.keys(found).length > 0) return;
+    if (Object.keys(found).length > 0) {
+      play("galat");
+      return;
+    }
     setBusy(true);
     try {
       const application = await applyToOpportunity({
@@ -69,9 +73,11 @@ export function ApplyDialog({ opportunity, roadmap, onClose, onApplied }: Props)
         roadmapId: attachRoadmap && roadmap ? roadmap.id : null,
       });
       setMotivation("");
+      play("benar");
       onApplied(application);
       ref.current?.close();
     } catch (error) {
+      play("galat");
       setFailure(error instanceof StoreError ? error.message : "Pendaftaran gagal dikirim. Periksa koneksimu lalu coba lagi.");
     } finally {
       setBusy(false);
