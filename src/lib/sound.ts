@@ -67,7 +67,7 @@ const SOUNDS: Record<SoundName, Note[]> = {
   berhenti: [{ from: 880, to: 520, at: 0, dur: 0.12, type: "sine", gain: 0.5 }],
 };
 
-// ── Preferensi nyala/mati ──
+// Preferensi nyala/mati
 
 function readEnabled(): boolean {
   try {
@@ -110,7 +110,7 @@ export function useSoundEnabled(): boolean {
   return useSyncExternalStore(subscribe, isEnabled, () => true);
 }
 
-// ── Pemutar ──
+// Pemutar
 
 let context: AudioContext | null = null;
 

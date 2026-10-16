@@ -28,7 +28,7 @@ const INPUT_LIMIT_STORY = 4000;
 const text = (max: number) => z.string().trim().min(1).max(max);
 const list = (max: number, itemMax: number = LIMITS.item) => z.array(text(itemMax)).max(max);
 
-// ───────────────────────── Katalog sumber ─────────────────────────
+// Katalog sumber
 
 export const RESOURCE_TYPES = [
   "sertifikasi",
@@ -156,7 +156,7 @@ export const AdminResourceSchema = AdminResourcePatchSchema.extend({
 });
 export type AdminResource = z.infer<typeof AdminResourceSchema>;
 
-// ───────────────────────── Drafting ─────────────────────────
+// Drafting
 
 export const ProfileSchema = z.object({
   dream: text(LIMITS.dream),
@@ -211,7 +211,7 @@ export const RefineSchema = z.object({
 });
 export type Refine = z.infer<typeof RefineSchema>;
 
-// ───────────────────────── Roadmap ─────────────────────────
+// Roadmap
 
 export const STEP_ID_PATTERN = /^s[1-9]\d*$/;
 
@@ -395,7 +395,7 @@ export const CostResearchRequestSchema = z.object({
 });
 export type CostResearchRequest = z.infer<typeof CostResearchRequestSchema>;
 
-// ───────────────────────── Baris database ─────────────────────────
+// Baris database
 // Dipakai lib/store.ts untuk memvalidasi data yang dibaca dari Supabase
 // maupun localStorage (mode demo) sebelum masuk ke UI.
 
@@ -430,7 +430,7 @@ export const ProjectInterestRowSchema = z.object({
 });
 export type ProjectInterestRow = z.infer<typeof ProjectInterestRowSchema>;
 
-// ───────────────────────── Experience: mitra, lowongan, lamaran ─────────────────────────
+// Experience: mitra, lowongan, lamaran
 
 export const ProvinceSchema = z.enum(PROVINCES);
 
@@ -734,7 +734,7 @@ export const StoryDraftSchema = z.object({
 });
 export type StoryDraft = z.infer<typeof StoryDraftSchema>;
 
-// ───────────────────────── Input API ─────────────────────────
+// Input API
 
 /** Batas karakter per jawaban pengguna. */
 export const INPUT_LIMIT = 4000;
@@ -784,7 +784,7 @@ export type AiProvider = (typeof AI_PROVIDERS)[number];
 /** Penanda asal jawaban AI yang ikut di setiap respons API. */
 export type AiMeta = { provider: AiProvider; fallback: boolean };
 
-// ───────────────────────── Suara → teks (cadangan saat browser tidak punya pengenal suara) ─────────────────────────
+// Suara → teks (cadangan saat browser tidak punya pengenal suara)
 
 /** Rekaman maksimal per sekali tekan (detik). WAV 16 kHz mono ≈ 32 KB/detik. */
 export const MAX_RECORDING_SEC = 60;

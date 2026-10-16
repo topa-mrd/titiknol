@@ -28,7 +28,7 @@ async function apply(page: Page) {
 
 test("tangga proyek & squad: admin mencocokkan, anggota izin terlihat teman & mitra, proyek selesai membuka tingkat sedang", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
-  // ── Mitra (juga admin di mode demo) membuka lowongan tingkat kecil ──
+  // Mitra (juga admin di mode demo) membuka lowongan tingkat kecil
   await loginDemo(page, "/mitra", "Bu Ayu");
   const mitra = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!), USER_KEY);
   await page.getByRole("button", { name: "Daftar sebagai mitra" }).click();
@@ -50,7 +50,7 @@ test("tangga proyek & squad: admin mencocokkan, anggota izin terlihat teman & mi
   await page.getByRole("button", { name: `Setujui lowongan ${TITLE}` }).click();
   await expect(page.getByRole("status").filter({ hasText: "disetujui dan tayang" })).toBeVisible();
 
-  // ── Dua talenta baru: proyek sedang terkunci, mereka mendaftar proyek kecil ──
+  // Dua talenta baru: proyek sedang terkunci, mereka mendaftar proyek kecil
   const rina = { id: "11111111-1111-4111-8111-111111111111", name: "Rina" };
   const bayu = { id: "22222222-2222-4222-8222-222222222222", name: "Bayu" };
   await becomes(page, rina);
@@ -68,7 +68,7 @@ test("tangga proyek & squad: admin mencocokkan, anggota izin terlihat teman & mi
   await becomes(page, bayu);
   await apply(page);
 
-  // ── Admin meneruskan keduanya lalu membentuk squad ──
+  // Admin meneruskan keduanya lalu membentuk squad
   await becomes(page, mitra);
   await page.goto("/admin");
   await page.getByRole("tab", { name: "Pendaftar" }).click();
@@ -92,7 +92,7 @@ test("tangga proyek & squad: admin mencocokkan, anggota izin terlihat teman & mi
   await expect(page.getByRole("status").filter({ hasText: "Bayu masuk Squad Katalog A." })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("admin-squad.png"), fullPage: true });
 
-  // ── Rina melihat squad + link grup, lalu izin ──
+  // Rina melihat squad + link grup, lalu izin
   await becomes(page, rina);
   await page.goto("/experience");
   const mine = page.getByRole("region", { name: "Lamaranku" }).getByRole("listitem").filter({ hasText: TITLE }).first();
@@ -106,7 +106,7 @@ test("tangga proyek & squad: admin mencocokkan, anggota izin terlihat teman & mi
   await expect(squad).toContainText("Izin: Sakit sampai Kamis");
   await page.screenshot({ path: testInfo.outputPath("squad-talenta.png"), fullPage: true });
 
-  // ── Bayu dan mitra melihat izin Rina ──
+  // Bayu dan mitra melihat izin Rina
   await becomes(page, bayu);
   await page.goto("/experience");
   await expect(page.getByRole("region", { name: "Squad: Squad Katalog A" })).toContainText("Izin: Sakit sampai Kamis");
@@ -117,7 +117,7 @@ test("tangga proyek & squad: admin mencocokkan, anggota izin terlihat teman & mi
   await expect(mitraSquad).toContainText("Izin: Sakit sampai Kamis");
   await expect(mitraSquad.getByRole("button", { name: "Aku izin" })).toHaveCount(0);
 
-  // ── Mitra menandai Rina selesai → tingkat sedang terbuka untuk Rina ──
+  // Mitra menandai Rina selesai → tingkat sedang terbuka untuk Rina
   const rinaCard = page.getByRole("region", { name: "Talenta" }).getByRole("listitem").filter({ hasText: "Rina" }).filter({ hasText: "081234567890" }).first();
   await rinaCard.getByRole("combobox", { name: "Status" }).selectOption("selesai");
   await rinaCard.getByRole("button", { name: /^Simpan status/ }).click();

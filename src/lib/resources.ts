@@ -91,7 +91,7 @@ const FREE: Price = {
 };
 
 const CATALOG: readonly Omit<Resource, "price" | "origin" | "review">[] = [
-  // ───────── Sertifikasi ─────────
+  // Sertifikasi
   {
     id: "google-data-analytics",
     title: "Google Data Analytics Professional Certificate",
@@ -214,7 +214,7 @@ const CATALOG: readonly Omit<Resource, "price" | "origin" | "review">[] = [
     note: "Sertifikasi gratis Google Ads dan Google Analytics.",
   },
 
-  // ───────── Kursus ─────────
+  // Kursus
   {
     id: "dicoding",
     title: "Dicoding Academy",
@@ -370,7 +370,7 @@ const CATALOG: readonly Omit<Resource, "price" | "origin" | "review">[] = [
     note: "Panduan dan pelatihan memulai serta mengurus usaha kecil di Indonesia.",
   },
 
-  // ───────── Program ─────────
+  // Program
   {
     id: "digital-talent-scholarship",
     title: "Digital Talent Scholarship",
@@ -449,7 +449,7 @@ const CATALOG: readonly Omit<Resource, "price" | "origin" | "review">[] = [
     note: "Bootcamp karier intensif dengan pendampingan; cek skema pembayaran yang tersedia.",
   },
 
-  // ───────── Beasiswa ─────────
+  // Beasiswa
   {
     id: "lpdp",
     title: "Beasiswa LPDP",
@@ -583,7 +583,7 @@ const CATALOG: readonly Omit<Resource, "price" | "origin" | "review">[] = [
     note: "Portal resmi kuliah dan beasiswa di Prancis.",
   },
 
-  // ───────── Kampus ─────────
+  // Kampus
   {
     id: "universitas-terbuka",
     title: "Universitas Terbuka",
@@ -618,7 +618,7 @@ const CATALOG: readonly Omit<Resource, "price" | "origin" | "review">[] = [
     note: "Kampus negeri di Bandung, kuat di bidang teknik, sains, dan seni rupa.",
   },
 
-  // ───────── Ujian ─────────
+  // Ujian
   {
     id: "snpmb",
     title: "SNPMB (SNBP & SNBT/UTBK)",
@@ -664,7 +664,7 @@ const CATALOG: readonly Omit<Resource, "price" | "origin" | "review">[] = [
     note: "Tes bahasa Inggris online dari rumah yang diterima banyak kampus luar negeri.",
   },
 
-  // ───────── Relawan ─────────
+  // Relawan
   {
     id: "indonesia-mengajar",
     title: "Indonesia Mengajar",

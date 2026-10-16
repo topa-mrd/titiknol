@@ -48,9 +48,7 @@ begin;
 
 ${schemaSql.trim()}
 
--- ────────────────────────────────────────────────────────────────────
 -- Seed katalog (${rows.length} sumber)
--- ────────────────────────────────────────────────────────────────────
 insert into public.resources (id, title, provider, type, url, cost, tags, level, note,
   price_min_idr, price_max_idr, price_unit, price_note, price_source_url, price_checked_at)
 values

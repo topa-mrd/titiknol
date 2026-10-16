@@ -237,7 +237,7 @@ export function StoryStudio() {
   );
 }
 
-// ───────────────────────── 1. Bercerita ─────────────────────────
+// 1. Bercerita
 
 function TellStep({
   user,
@@ -414,7 +414,7 @@ function ThinkingStep() {
   );
 }
 
-// ───────────────────────── 2. Edit ─────────────────────────
+// 2. Edit
 
 function EditStep({
   initial,
@@ -698,7 +698,7 @@ function EditStep({
   );
 }
 
-// ───────────────────────── 3. Selesai ─────────────────────────
+// 3. Selesai
 
 function DoneStep({ story, onAgain }: { story: Story; onAgain: () => void }) {
   const published = story.status === "terbit";
@@ -732,7 +732,7 @@ function DoneStep({ story, onAgain }: { story: Story; onAgain: () => void }) {
   );
 }
 
-// ───────────────────────── Tulisanku ─────────────────────────
+// Tulisanku
 
 const STATUS_TONE: Record<Story["status"], string> = {
   draf: "bg-sun-soft text-on-sun",

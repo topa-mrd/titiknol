@@ -306,7 +306,7 @@ function CostRow({ line, onChange }: { line: CostLine; onChange: (patch: Partial
   );
 }
 
-// ───────────────────────── Biaya besar (kuliah, hidup, visa…) ─────────────────────────
+// Biaya besar (kuliah, hidup, visa…)
 
 const EXTRA_UNIT_LABEL = { sekali: "sekali bayar", "per bulan": "bulan", "per semester": "semester", "per tahun": "tahun" } as const;
 const CATEGORY_LABEL: Record<ExtraCategory, string> = {
@@ -501,7 +501,7 @@ function ExtraRow({ line, onChange }: { line: ExtraLine; onChange: (patch: Parti
   );
 }
 
-// ───────────────────────── Opsi lebih hemat ─────────────────────────
+// Opsi lebih hemat
 
 const KIND: Record<SavingKind, { label: string; tone: string }> = {
   beasiswa: { label: "Beasiswa", tone: "bg-leaf-soft text-leaf-ink" },

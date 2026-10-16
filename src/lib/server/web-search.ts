@@ -66,7 +66,7 @@ export function resetSearchCache() {
   memory.clear();
 }
 
-// ───────────────────────── Kunci & bentuk data ─────────────────────────
+// Kunci & bentuk data
 
 const clean = (value: string) =>
   value
@@ -314,7 +314,7 @@ async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<v
   );
 }
 
-// ───────────────────────── Penyimpanan (server, secret key) ─────────────────────────
+// Penyimpanan (server, secret key)
 
 function adminClient(env: Record<string, string | undefined>) {
   const supabase = getSupabaseEnv();
@@ -377,7 +377,7 @@ const defaults = (): SearchDeps => ({
   },
 });
 
-// ───────────────────────── Alur utama ─────────────────────────
+// Alur utama
 
 export async function searchWebResources(
   needs: readonly ResourceNeed[],

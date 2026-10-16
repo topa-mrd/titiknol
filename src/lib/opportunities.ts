@@ -109,7 +109,7 @@ export function filterOpportunities(list: readonly Opportunity[], f: Opportunity
 const hasWord = (text: string, keyword: string) =>
   new RegExp(`(^|[^\\p{L}\\p{N}])${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "u").test(text);
 
-// ───────────────────────── Tangga proyek ─────────────────────────
+// Tangga proyek
 
 export const LEVEL_LABEL: Record<OpportunityLevel, string> = { kecil: "Proyek kecil", sedang: "Proyek sedang", tinggi: "Proyek tinggi" };
 export const LEVEL_HINT: Record<OpportunityLevel, string> = {
@@ -168,7 +168,7 @@ export function rankOpportunities(list: readonly Opportunity[], roadmap: Roadmap
     .map(({ opportunity, matched }) => ({ opportunity, matched }));
 }
 
-// ───────────────────────── Lowongan contoh (organisasi fiktif) ─────────────────────────
+// Lowongan contoh (organisasi fiktif)
 
 type Sample = Pick<
   Opportunity,

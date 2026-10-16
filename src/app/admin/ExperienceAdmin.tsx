@@ -47,7 +47,7 @@ function Empty({ children }: { children: string }) {
   );
 }
 
-// ───────────────────────── Verifikasi lowongan ─────────────────────────
+// Verifikasi lowongan
 
 export function OpportunityReviewSection() {
   const [filter, setFilter] = useState<OpportunityAdminFilter>("menunggu");
@@ -166,7 +166,7 @@ function ReviewCard({ opportunity: o, onDecide }: { opportunity: AdminOpportunit
   );
 }
 
-// ───────────────────────── Pendaftar ─────────────────────────
+// Pendaftar
 
 export function ApplicationReviewSection() {
   const [filter, setFilter] = useState<ApplicationAdminFilter>("dikirim");

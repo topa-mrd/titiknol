@@ -28,7 +28,7 @@ import { cleanTags } from "../stories";
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 
-// ───────────────────────── JSON ─────────────────────────
+// JSON
 
 /** Ambil objek JSON dari teks model: buang ```json fence, teks pengantar, dan penutup. */
 export function extractJson(text: string): unknown {
@@ -71,7 +71,7 @@ function unwrap(value: unknown, expectedKey: string): Obj {
   return value;
 }
 
-// ───────────────────────── Teks & daftar ─────────────────────────
+// Teks & daftar
 
 /** Potong teks di batas kata dan tambahkan elipsis; hasil selalu ≤ max. */
 export function truncate(text: string, max: number): string {
@@ -117,7 +117,7 @@ export function list(value: unknown, maxItems: number, itemMax: number = LIMITS.
   return out;
 }
 
-// ───────────────────────── Nilai khusus ─────────────────────────
+// Nilai khusus
 
 /** "3 minggu" → 3, "2–3 minggu" → 3, "1 bulan" → 4, "10 hari" → 2. Default 2. */
 export function weeks(value: unknown): number {
@@ -174,7 +174,7 @@ export function slug(value: unknown): string | undefined {
   return SLUG_PATTERN.test(s) && s.length <= 64 ? s : undefined;
 }
 
-// ───────────────────────── Bentuk domain ─────────────────────────
+// Bentuk domain
 
 export function normalizeProfile(raw: unknown): unknown {
   const p = isObj(raw) ? raw : {};
@@ -303,7 +303,7 @@ export function normalizePicks(raw: unknown): unknown {
   };
 }
 
-// ───────────────────────── Tulisan (Share your story) ─────────────────────────
+// Tulisan (Share your story)
 
 const URL_LIKE = /\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|id|net|org|co\.id|ac\.id|io|me|ly)(?:\/\S*)?/gi;
 const EMAIL = /\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g;
@@ -348,7 +348,7 @@ export function normalizeTranscript(raw: unknown): unknown {
   return { text: str(d.text ?? d.transcript ?? d.transkrip, INPUT_LIMIT) ?? "" };
 }
 
-// ───────────────────────── Riset biaya besar ─────────────────────────
+// Riset biaya besar
 
 export type CostProposal = {
   label: string;

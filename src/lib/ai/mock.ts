@@ -23,7 +23,7 @@ import { scrubContacts, storyTags, truncate } from "./normalize";
  * sumber nyatanya dicari dari katalog oleh lib/resource-search.ts, sama seperti mode asli.
  */
 
-// ───────────────────────── Bidang ─────────────────────────
+// Bidang
 
 type Field = {
   key: string;
@@ -182,7 +182,7 @@ export function detectField(dream: string, background = ""): Field {
   return FIELDS.find((f) => f.pattern.test(dream)) ?? FIELDS.find((f) => f.pattern.test(background)) ?? GENERAL;
 }
 
-// ───────────────────────── Kota, kendala, modal ─────────────────────────
+// Kota, kendala, modal
 
 const CITIES = [
   "Jakarta", "Bandung", "Surabaya", "Medan", "Semarang", "Makassar", "Palembang", "Yogyakarta", "Jogja",
@@ -229,7 +229,7 @@ const matches = (text: string, rules: [RegExp, string][]) =>
 const firstSentence = (text: string) => text.split(/(?<=[.!?])\s+|\n+/)[0]?.trim() ?? "";
 const has = (profile: Profile, constraint: string) => profile.constraints.includes(constraint);
 
-// ───────────────────────── Draft ─────────────────────────
+// Draft
 
 export function buildProfile(input: DraftRequest): Profile {
   const story = `${input.dream}\n${input.background}`;
@@ -329,7 +329,7 @@ export function mockDraft(input: DraftRequest): Draft {
   };
 }
 
-// ───────────────────────── Refine ─────────────────────────
+// Refine
 
 const cheaper = (level: CostLevel): CostLevel => COST_LEVELS[Math.max(0, COST_LEVELS.indexOf(level) - 1)];
 
@@ -399,7 +399,7 @@ export function mockRefine(profile: Profile, plans: Plan[], messages: ChatMessag
   };
 }
 
-// ───────────────────────── Roadmap ─────────────────────────
+// Roadmap
 
 export function mockRoadmap(profile: Profile, plan: Plan): RoadmapDraft {
   const field = detectField(`${profile.dream} ${plan.title}`, plan.approach);
@@ -516,7 +516,7 @@ export function mockRoadmap(profile: Profile, plan: Plan): RoadmapDraft {
   };
 }
 
-// ───────────────────────── Tulisan (Share your story) ─────────────────────────
+// Tulisan (Share your story)
 
 const STORY_TOPICS: [RegExp, string][] = [
   [/beasiswa|scholarship/i, "beasiswa"],

@@ -37,10 +37,8 @@ begin
 end;
 $$;
 
--- ────────────────────────────────────────────────────────────────────
 -- resources: katalog sertifikasi/beasiswa/kampus. Semua boleh baca;
 -- tulis hanya admin lewat dashboard (role postgres/service_role).
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.resources (
   id          text primary key
               check (id ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and char_length(id) <= 64),
@@ -89,11 +87,9 @@ create policy "resources: semua boleh baca yang aktif"
 revoke all on public.resources from anon, authenticated;
 grant select on public.resources to anon, authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 -- admins: pengguna yang boleh memeriksa & merevisi katalog di /admin.
 -- Diisi lewat SQL (`npm run admin:add -- email`). Tiap pengguna hanya bisa
 -- melihat barisnya sendiri (untuk tahu apakah dia admin).
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.admins (
   user_id     uuid primary key references auth.users (id) on delete cascade,
   created_at  timestamptz not null default now()
@@ -124,11 +120,9 @@ $$;
 revoke all on function public.is_admin() from public;
 grant execute on function public.is_admin() to anon, authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 -- resources (lanjutan): sumber hasil pencarian web Gemini + pemeriksaan admin.
 -- origin 'web' = URL dari metadata hasil pencarian, sudah dicek bisa dibuka.
 -- review_status 'ditolak' otomatis menonaktifkan sumber (tidak terbaca publik).
--- ────────────────────────────────────────────────────────────────────
 alter table public.resources add column if not exists origin text not null default 'kurasi'
   constraint resources_origin_check check (origin in ('kurasi', 'web'));
 alter table public.resources add column if not exists review_status text not null default 'disetujui'
@@ -172,11 +166,9 @@ create policy "resources: admin ubah"
 grant update (title, provider, type, url, cost, tags, level, note, review_status, reviewed_at, reviewed_by)
   on public.resources to authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 -- search_cache: hasil pencarian web per kebutuhan (jenis + kata kunci),
 -- 30 hari. Ditulis hanya oleh server (secret key, melewati RLS); admin
 -- boleh membaca untuk pemeriksaan.
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.search_cache (
   key           text primary key check (char_length(key) between 1 and 300),
   resource_ids  text[] not null default '{}' check (cardinality(resource_ids) <= 10),
@@ -194,11 +186,9 @@ create policy "search_cache: admin baca"
 revoke all on public.search_cache from anon, authenticated;
 grant select on public.search_cache to authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 -- price_estimates: perkiraan harga hasil pencarian web Gemini untuk sumber
 -- yang belum punya harga kurasi. Semua boleh baca; tulis hanya server
 -- (secret key, melewati RLS). Selalu ditampilkan sebagai "perkiraan AI".
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.price_estimates (
   resource_id  text primary key references public.resources (id) on delete cascade,
   min_idr      integer not null check (min_idr >= 0),
@@ -227,10 +217,8 @@ create policy "price_estimates: semua boleh baca"
 revoke all on public.price_estimates from anon, authenticated;
 grant select on public.price_estimates to anon, authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 -- roadmaps: satu baris per roadmap, langkah disimpan sebagai JSONB.
 -- Hanya pemilik yang boleh membaca dan mengubah.
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.roadmaps (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -297,10 +285,8 @@ grant select, insert, delete on public.roadmaps to authenticated;
 -- id, user_id, dan created_at tidak bisa diubah dari client.
 grant update (title, summary, dream, profile, plan, steps, progress, costs) on public.roadmaps to authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 -- project_interests: proyek mikro (Experience) yang diterima pengguna.
 -- Hanya pemilik.
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.project_interests (
   user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   project_id  text not null
@@ -348,10 +334,8 @@ grant select, insert, delete on public.project_interests to authenticated;
 -- project_id ikut di-grant karena upsert PostgREST menulis ulang kolom yang dikirim.
 grant update (project_id, status) on public.project_interests to authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 -- stories: Share your story. Semua boleh baca; tulis/ubah/hapus hanya
 -- pemilik. Anon tidak bisa melihat kolom user_id.
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.stories (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -452,7 +436,6 @@ grant select on public.organizations to authenticated;
 grant insert (name, kind, province, city, contact_name, contact, description) on public.organizations to authenticated;
 grant update (name, kind, province, city, contact_name, contact, description) on public.organizations to authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.opportunities (
   id             uuid primary key default gen_random_uuid(),
   org_id         uuid not null references public.organizations (id) on delete cascade,
@@ -588,7 +571,6 @@ grant insert (org_id, title, category, kind, province, city, remote, description
 grant update (title, category, kind, province, city, remote, description, requirements, stipend, duration, slots, deadline, tags,
   closed, review_status, admin_note) on public.opportunities to authenticated;
 
--- ────────────────────────────────────────────────────────────────────
 create table if not exists public.applications (
   id                 uuid primary key default gen_random_uuid(),
   opportunity_id     uuid not null references public.opportunities (id) on delete restrict,
@@ -937,7 +919,7 @@ $$;
 grant insert (level) on public.opportunities to authenticated;
 grant update (level) on public.opportunities to authenticated;
 
--- ── squad ──
+-- squad
 create table if not exists public.squads (
   id              uuid primary key default gen_random_uuid(),
   opportunity_id  uuid not null references public.opportunities (id) on delete cascade,
@@ -1207,9 +1189,7 @@ create policy "applications: pihak terkait boleh mengubah status"
     )
   );
 
--- ────────────────────────────────────────────────────────────────────
 -- Seed katalog (54 sumber)
--- ────────────────────────────────────────────────────────────────────
 insert into public.resources (id, title, provider, type, url, cost, tags, level, note,
   price_min_idr, price_max_idr, price_unit, price_note, price_source_url, price_checked_at)
 values

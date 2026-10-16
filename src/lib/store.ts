@@ -90,7 +90,7 @@ export class StoreError extends Error {
 
 export const storeMode = (): StoreMode => (getSupabaseBrowserClient() ? "supabase" : "demo");
 
-// ───────────────────────── Mode demo (localStorage) ─────────────────────────
+// Mode demo (localStorage)
 
 const DEMO_USER_KEY = "titiknol:demo:user";
 const DEMO_ROADMAPS_KEY = "titiknol:demo:roadmaps";
@@ -150,7 +150,7 @@ function requireDemoUser(): AppUser {
   return user;
 }
 
-// ───────────────────────── Mode Supabase ─────────────────────────
+// Mode Supabase
 
 function toAppUser(user: User): AppUser {
   const meta = user.user_metadata ?? {};
@@ -214,7 +214,7 @@ async function requireSupabaseUser() {
   return { supabase, user: data.session.user };
 }
 
-// ───────────────────────── Auth ─────────────────────────
+// Auth
 
 export async function getUser(): Promise<AppUser | null> {
   const supabase = getSupabaseBrowserClient();
@@ -316,7 +316,7 @@ export async function signOut(): Promise<void> {
   emitAuthChange();
 }
 
-// ───────────────────────── Roadmap ─────────────────────────
+// Roadmap
 
 export async function createRoadmap(input: NewRoadmap): Promise<RoadmapRow> {
   const payload = { ...input, dream: input.dream.slice(0, 600) };
@@ -442,7 +442,7 @@ export async function deleteRoadmap(id: string): Promise<void> {
   }
 }
 
-// ───────────────────────── Experience: penugasan proyek ─────────────────────────
+// Experience: penugasan proyek
 
 function parseList<T>(rows: unknown, schema: z.ZodType<T>): T[] {
   return Array.isArray(rows)
@@ -501,7 +501,7 @@ export async function setProjectInterest(projectId: string, status: ProjectStatu
   }
 }
 
-// ───────────────────────── Blog & komunitas (Share your story) ─────────────────────────
+// Blog & komunitas (Share your story)
 
 const StoryItemSchema = StoryRowSchema.extend({ user_id: z.uuid().nullable().default(null) });
 
@@ -709,7 +709,7 @@ export async function moderateStory(id: string, status: "terbit" | "diturunkan")
   }
 }
 
-// ───────────────────────── Katalog: data terbaru & pemeriksaan admin ─────────────────────────
+// Katalog: data terbaru & pemeriksaan admin
 
 /**
  * Data sumber terbaru untuk id tertentu, agar roadmap tersimpan memakai revisi
@@ -809,7 +809,7 @@ export async function updateResourceByAdmin(id: string, patch: AdminResourcePatc
   }
 }
 
-// ───────────────────────── Experience: mitra, lowongan, lamaran ─────────────────────────
+// Experience: mitra, lowongan, lamaran
 
 const DEMO_ORGS_KEY = "titiknol:demo:orgs";
 const DEMO_OPPS_KEY = "titiknol:demo:opportunities";
@@ -834,7 +834,7 @@ function invalidInput(issue: { message: string } | undefined): StoreError {
   return new StoreError(issue?.message && !/^Invalid|^Too|^String/.test(issue.message) ? issue.message : "Isian belum lengkap atau tidak valid. Periksa lagi.", "invalid");
 }
 
-// ── bentuk baris ↔ objek ──
+// bentuk baris ↔ objek
 
 type OrgRow = {
   id: string;
@@ -993,7 +993,7 @@ const fromAppRow = (r: AppRow): Application | null => {
 
 const compact = <T,>(list: (T | null)[]): T[] => list.filter((x): x is T => x !== null);
 
-// ── data demo ──
+// data demo
 
 const demoOrgs = () => parseList(readJson(DEMO_ORGS_KEY, []), OrganizationSchema);
 const demoOpps = () => parseList(readJson(DEMO_OPPS_KEY, []), OpportunitySchema);
@@ -1010,7 +1010,7 @@ function saveDemoOpp(next: Opportunity): Opportunity {
   return next;
 }
 
-// ── talenta ──
+// talenta
 
 /**
  * Lowongan yang dibuka (sudah disetujui admin, belum ditutup). Bila database
@@ -1169,7 +1169,7 @@ export function cancelApplication(id: string): Promise<Application> {
   );
 }
 
-// ── mitra ──
+// mitra
 
 export async function getMyOrganization(): Promise<Organization | null> {
   if (storeMode() === "demo") {
@@ -1351,7 +1351,7 @@ export async function updateApplicationByOrg(id: string, status: ApplicationStat
   );
 }
 
-// ── admin ──
+// admin
 
 /**
  * Bagian admin Experience. Mode demo tidak punya admin sungguhan: siapa pun
@@ -1445,7 +1445,7 @@ export function updateApplicationByAdmin(id: string, status: ApplicationStatus, 
   );
 }
 
-// ───────────────────────── Tangga proyek & squad ─────────────────────────
+// Tangga proyek & squad
 
 const DEMO_SQUADS_KEY = "titiknol:demo:squads";
 const SQUAD_COLUMNS = "id, opportunity_id, name, contact_link, note, created_at";

@@ -328,7 +328,7 @@ export async function generateRoadmap(
   return { ...stage1, data: assembleRoadmap(stage1.data, picks, catalog), resourcesBy };
 }
 
-// ───────────────────────── Riset biaya besar (kuliah, hidup, visa…) ─────────────────────────
+// Riset biaya besar (kuliah, hidup, visa…)
 
 export type CostResearch = { extras: CostExtra[]; savings: SavingOption[]; status: "selesai" | "kosong"; provider: "gemini" | "openrouter" };
 
