@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as costsPost } from "@/app/api/costs/route";
 import { normalizeCostProposals } from "@/lib/ai/normalize";
 import { costResearchPrompt } from "@/lib/ai/prompts";
-import { AiUnavailableError, mergeAlternatives, researchCosts } from "@/lib/ai/service";
+import { AiUnavailableError, markProofOfFunds, mergeAlternatives, researchCosts } from "@/lib/ai/service";
 import { costLines, extraLines, summarize, withExtra } from "@/lib/costs";
 import { toIdrRange } from "@/lib/fx";
 import { CostExtraSchema, EMPTY_COSTS, type CostExtra, type CostResearchRequest, type RoadmapCosts } from "@/lib/types";
@@ -90,6 +90,29 @@ describe("mergeAlternatives", () => {
     expect(out.map((e) => e.id)).toEqual(["a", "c", "e"]);
     expect(out[0]).toMatchObject({ min: 340, max: 498, qty: 2 });
     expect(out[0].note).toMatch(/^Rentang dari beberapa kampus/);
+  });
+});
+
+describe("bukti dana", () => {
+  it("ditampilkan tapi tidak ikut total, dengan catatan penjelasan; biaya lain tidak tersentuh", () => {
+    const make = (label: string) =>
+      CostExtraSchema.parse({
+        id: "x",
+        label,
+        category: "dokumen",
+        min: 226_300_000,
+        max: 247_300_000,
+        unit: "per tahun",
+        qty: 2,
+        included: true,
+        amount: null,
+        sourceUrl: "https://www.saxion.edu",
+        checkedAt: "2026-10-16",
+      });
+    const proof = markProofOfFunds(make("Bukti dana finansial (proof of financial means) ke imigrasi (IND)"));
+    expect(proof.included).toBe(false);
+    expect(proof.note).toMatch(/^Bukan biaya terpisah/);
+    expect(markProofOfFunds(make("Visa dan izin tinggal pelajar")).included).toBe(true);
   });
 });
 

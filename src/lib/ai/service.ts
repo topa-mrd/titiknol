@@ -481,6 +481,15 @@ export function mergeAlternatives(extras: CostExtra[]): CostExtra[] {
   return out;
 }
 
+const PROOF_OF_FUNDS = /bukti dana|jaminan dana|proof of (financial|funds)|financial means|blocked account|sperrkonto/i;
+const PROOF_NOTE = "Bukan biaya terpisah: dana yang harus ada di rekeningmu saat mengurus visa, lalu terpakai untuk biaya hidup. Tidak dihitung ke total.";
+
+/** Bukti dana ditampilkan sebagai informasi tapi tidak dijumlahkan (akan terhitung ganda dengan biaya hidup). */
+export function markProofOfFunds(extra: CostExtra): CostExtra {
+  if (!PROOF_OF_FUNDS.test(`${extra.label} ${extra.note}`)) return extra;
+  return { ...extra, included: false, note: `${PROOF_NOTE} ${extra.note}`.slice(0, 200) };
+}
+
 /**
  * Biaya besar sebuah roadmap: empat pencarian web terfokus (kuliah, hidup,
  * dokumen, perjalanan) berjalan paralel lalu digabung. Hanya angka bersumber yang
@@ -508,5 +517,5 @@ export async function researchCosts(input: CostResearchRequest, partial: Partial
     seen.add(extra.id);
     extras.push(extra);
   }
-  return { extras: extras.slice(0, 10), status: extras.length ? "selesai" : "kosong", provider: ok[0].provider };
+  return { extras: extras.slice(0, 10).map(markProofOfFunds), status: extras.length ? "selesai" : "kosong", provider: ok[0].provider };
 }
