@@ -188,7 +188,7 @@ export function ExperienceBoard() {
         {notice}
       </p>
 
-      {loaded && !loaded.samplesOnly && (
+      {loaded && (
         <MatchRequestPanel
           signedIn={!!loaded.user}
           roadmaps={loaded.roadmaps.map((r) => ({ id: r.id, title: r.title, planTitle: r.plan.title || r.title }))}
