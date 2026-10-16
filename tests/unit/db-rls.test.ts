@@ -99,6 +99,7 @@ describe("setup.sql", () => {
       { tablename: "resources", rowsecurity: true },
       { tablename: "roadmaps", rowsecurity: true },
       { tablename: "search_cache", rowsecurity: true },
+      { tablename: "squads", rowsecurity: true },
       { tablename: "stories", rowsecurity: true },
     ]);
   });
@@ -509,6 +510,149 @@ describe("RLS stories", () => {
     await expect(
       asUser(USER_A, () => db.query(INSERT_STORY, ["Rina", "puisi", "Judul ok", story[3]])),
     ).rejects.toThrow(/check constraint/);
+  });
+});
+
+describe("RLS tangga proyek & squad", () => {
+  const ADMIN = USER_B; // admin (blok "RLS admins")
+  const MITRA = "00000000-0000-4000-8000-0000000000e1";
+  const [T1, T2, T3, T4, T5, T6] = [2, 3, 4, 5, 6, 7].map((n) => `00000000-0000-4000-8000-0000000000e${n}`);
+  const opp: Record<string, string> = {};
+  const app: Record<string, string> = {};
+
+  const OPP = `insert into public.opportunities (org_id, title, category, kind, province, city, description, stipend, duration, slots, level)
+    values ($1, $2, 'desain', 'proyek', 'Jawa Timur', 'Kediri', 'Proyek desain untuk usaha kecil di Kediri.', 'Rp300.000', '2 minggu', 4, $3) returning id`;
+  const APPLY = `insert into public.applications (opportunity_id, applicant_name, contact, motivation)
+    values ($1, $2, '081111111111', 'Saya ingin belajar dan membantu usaha kecil di daerah saya.') returning id`;
+  const apply = (who: string, oppKey: string, name = "Talenta") =>
+    asUser(who, () => db.query<{ id: string }>(APPLY, [opp[oppKey], name]));
+  const setStatus = (who: string, id: string, status: string) =>
+    asUser(who, () => db.query("update public.applications set status = $2 where id = $1", [id, status]));
+  const tierOf = (who: string) => asUser(who, async () => Number((await db.query<{ t: number }>("select public.my_talent_tier() as t")).rows[0].t));
+  /** Admin meneruskan, mitra menerima → bekerja → selesai. */
+  const finish = async (id: string) => {
+    await setStatus(ADMIN, id, "diteruskan");
+    for (const s of ["diterima", "bekerja", "selesai"]) await setStatus(MITRA, id, s);
+  };
+  const members = (who: string, squad: string) =>
+    asUser(who, () =>
+      db.query<{ name: string; availability: string; availability_note: string; is_me: boolean }>("select * from public.squad_members($1)", [squad]),
+    );
+
+  beforeAll(async () => {
+    await db.query("insert into auth.users (id) values ($1), ($2), ($3), ($4), ($5), ($6), ($7) on conflict do nothing", [MITRA, T1, T2, T3, T4, T5, T6]);
+    await db.query("insert into public.admins (user_id) values ($1) on conflict do nothing", [ADMIN]);
+    const org = await asUser(MITRA, () =>
+      db.query<{ id: string }>(
+        "insert into public.organizations (name, kind, province, city, contact_name, contact) values ('Toko Batik Ayu', 'umkm', 'Jawa Timur', 'Kediri', 'Bu Ayu', '081234567890') returning id",
+      ),
+    );
+    for (const [key, title, level] of [
+      ["kecil", "Katalog produk batik", "kecil"],
+      ["kecil2", "Foto produk batik", "kecil"],
+      ["sedang", "Toko online batik", "sedang"],
+      ["tinggi", "Strategi pemasaran setahun", "tinggi"],
+    ] as const) {
+      opp[key] = (await asUser(MITRA, () => db.query<{ id: string }>(OPP, [org.rows[0].id, title, level]))).rows[0].id;
+      await asUser(ADMIN, () => db.query("update public.opportunities set review_status = 'disetujui' where id = $1", [opp[key]]));
+    }
+  });
+
+  it("talenta baru hanya bisa mendaftar proyek kecil; tingkat naik setelah proyek selesai", async () => {
+    expect(await tierOf(T1)).toBe(1);
+    await expect(apply(T1, "sedang")).rejects.toThrow(/tingkat sedang terbuka setelah kamu menyelesaikan satu proyek kecil/);
+    await expect(apply(T1, "tinggi")).rejects.toThrow(/tingkat tinggi terbuka/);
+    app.t1kecil = (await apply(T1, "kecil", "Rina")).rows[0].id;
+
+    // Lamaran yang masih berjalan belum menaikkan tingkat.
+    await setStatus(ADMIN, app.t1kecil, "diteruskan");
+    expect(await tierOf(T1)).toBe(1);
+    for (const s of ["diterima", "bekerja", "selesai"]) await setStatus(MITRA, app.t1kecil, s);
+    expect(await tierOf(T1)).toBe(2);
+
+    app.t1sedang = (await apply(T1, "sedang", "Rina")).rows[0].id;
+    await expect(apply(T1, "tinggi")).rejects.toThrow(/tingkat tinggi terbuka setelah kamu menyelesaikan satu proyek tingkat sedang/);
+    await finish(app.t1sedang);
+    expect(await tierOf(T1)).toBe(3);
+    await expect(apply(T1, "tinggi")).resolves.toBeTruthy();
+  });
+
+  it("mitra mengubah tingkat lowongan → kembali menunggu verifikasi; talenta tidak bisa memanggil talent_tier orang lain", async () => {
+    await asUser(MITRA, () => db.query("update public.opportunities set level = 'sedang' where id = $1", [opp.kecil2]));
+    expect(await asAnon(() => count("select count(*) as n from public.opportunities where id = $1", [opp.kecil2]))).toBe(0);
+    await asUser(MITRA, () => db.query("update public.opportunities set level = 'kecil' where id = $1", [opp.kecil2]));
+    await asUser(ADMIN, () => db.query("update public.opportunities set review_status = 'disetujui' where id = $1", [opp.kecil2]));
+    await expect(asUser(T2, () => db.query("select public.talent_tier($1)", [T1]))).rejects.toThrow(DENIED);
+  });
+
+  it("hanya admin membuat squad; anggota harus sudah diteruskan, lowongan sama, maks 4 orang", async () => {
+    const SQUAD = "insert into public.squads (opportunity_id, name, contact_link) values ($1, $2, 'https://chat.whatsapp.com/contoh') returning id";
+    await expect(asUser(MITRA, () => db.query(SQUAD, [opp.kecil, "Squad mitra"]))).rejects.toThrow(RLS_VIOLATION);
+    await expect(asUser(T2, () => db.query(SQUAD, [opp.kecil, "Squad talenta"]))).rejects.toThrow(RLS_VIOLATION);
+    app.squad = (await asUser(ADMIN, () => db.query<{ id: string }>(SQUAD, [opp.kecil, "Squad Katalog A"]))).rows[0].id;
+    app.squadLain = (await asUser(ADMIN, () => db.query<{ id: string }>(SQUAD, [opp.kecil2, "Squad Foto"]))).rows[0].id;
+
+    for (const [who, name] of [[T2, "Bayu"], [T3, "Sari"], [T4, "Dimas"], [T5, "Nadia"], [T6, "Rizal"]] as const) {
+      app[who] = (await apply(who, "kecil", name)).rows[0].id;
+    }
+    const assign = (who: string, id: string, squad: string) =>
+      asUser(who, () => db.query("update public.applications set squad_id = $2 where id = $1", [id, squad]));
+
+    await expect(assign(ADMIN, app[T2], app.squad)).rejects.toThrow(/setelah pendaftar diteruskan/);
+    for (const who of [T2, T3, T4, T5, T6]) await setStatus(ADMIN, app[who], "diteruskan");
+    await expect(assign(T2, app[T2], app.squad)).rejects.toThrow(/Hanya admin yang bisa mengatur squad/);
+    await expect(assign(MITRA, app[T2], app.squad)).rejects.toThrow(/Hanya admin yang bisa mengatur squad/);
+    await expect(assign(ADMIN, app[T2], app.squadLain)).rejects.toThrow(/untuk lowongan lain/);
+    for (const who of [T2, T3, T4, T5]) await assign(ADMIN, app[who], app.squad);
+    await expect(assign(ADMIN, app[T6], app.squad)).rejects.toThrow(/maksimal 4 orang/);
+  });
+
+  it("anggota melihat squad & nama temannya (bukan kontaknya); orang luar tidak; mitra lowongannya bisa", async () => {
+    expect(await asUser(T2, () => count("select count(*) as n from public.squads where id = $1", [app.squad]))).toBe(1);
+    // Lamaran teman tetap privat: kontak, alasan, CV tidak terbaca.
+    expect(await asUser(T2, () => count("select count(*) as n from public.applications where id = $1", [app[T3]]))).toBe(0);
+    const mine = await members(T2, app.squad);
+    expect(mine.rows.map((r) => r.name)).toEqual(["Bayu", "Sari", "Dimas", "Nadia"]);
+    expect(mine.rows.filter((r) => r.is_me).map((r) => r.name)).toEqual(["Bayu"]);
+    expect(Object.keys(mine.rows[0]).sort()).toEqual(["application_id", "availability", "availability_note", "is_me", "name", "status"]);
+
+    // T6 tidak masuk squad: tidak melihat squad maupun anggotanya.
+    expect(await asUser(T6, () => count("select count(*) as n from public.squads where id = $1", [app.squad]))).toBe(0);
+    expect((await members(T6, app.squad)).rows).toHaveLength(0);
+    expect((await members(MITRA, app.squad)).rows).toHaveLength(4);
+    await expect(asAnon(() => db.query("select * from public.squads"))).rejects.toThrow(DENIED);
+  });
+
+  it("izin: hanya pemilik lamaran yang bisa mengubah, dan terlihat teman satu squad & mitra", async () => {
+    await asUser(T2, () => db.query("update public.applications set availability = 'izin', availability_note = 'Sakit sampai Kamis' where id = $1", [app[T2]]));
+    const bayu = (rows: { name: string; availability: string; availability_note: string }[]) => rows.find((r) => r.name === "Bayu");
+    expect(bayu((await members(T3, app.squad)).rows)).toMatchObject({ availability: "izin", availability_note: "Sakit sampai Kamis" });
+    expect(bayu((await members(MITRA, app.squad)).rows)).toMatchObject({ availability: "izin" });
+
+    await asUser(MITRA, () => db.query("update public.applications set availability = 'siap' where id = $1", [app[T2]]));
+    await asUser(ADMIN, () => db.query("update public.applications set availability = 'siap', availability_note = '' where id = $1", [app[T2]]));
+    expect(bayu((await members(T3, app.squad)).rows)).toMatchObject({ availability: "izin", availability_note: "Sakit sampai Kamis" });
+    await expect(
+      asUser(T2, () => db.query("update public.applications set availability = 'cuti' where id = $1", [app[T2]])),
+    ).rejects.toThrow(/availability_check/);
+  });
+
+  it("mitra bisa menolak talenta yang diteruskan dan tetap melihatnya; yang ditolak keluar dari squad", async () => {
+    await setStatus(MITRA, app[T5], "ditolak");
+    expect(await asUser(MITRA, () => count("select count(*) as n from public.applications where id = $1 and status = 'ditolak'", [app[T5]]))).toBe(1);
+    const row = await db.query<{ squad_id: string | null }>("select squad_id from public.applications where id = $1", [app[T5]]);
+    expect(row.rows[0].squad_id).toBeNull();
+    expect((await members(T2, app.squad)).rows.map((r) => r.name)).toEqual(["Bayu", "Sari", "Dimas"]);
+  });
+
+  it("lamaran yang ditolak admin SEBELUM diteruskan tidak pernah terlihat mitra", async () => {
+    const T7 = "00000000-0000-4000-8000-0000000000e8";
+    await db.query("insert into auth.users (id) values ($1) on conflict do nothing", [T7]);
+    const id = (await apply(T7, "kecil2", "Putri")).rows[0].id;
+    await setStatus(ADMIN, id, "ditolak");
+    expect(await asUser(MITRA, () => count("select count(*) as n from public.applications where id = $1", [id]))).toBe(0);
+    // forwarded_at tidak bisa diisi klien untuk membuka akses.
+    await expect(asUser(ADMIN, () => db.query("update public.applications set forwarded_at = now() where id = $1", [id]))).rejects.toThrow(DENIED);
   });
 });
 

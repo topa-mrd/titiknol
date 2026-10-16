@@ -851,6 +851,362 @@ grant select (id, author_name, kind, title, summary, body, tags, contact, status
 grant select, insert, delete on public.stories to authenticated;
 grant update (author_name, kind, title, summary, body, tags, contact, status) on public.stories to authenticated;
 
+-- ════════════════════════════════════════════════════════════════════
+-- TANGGA PROYEK & SQUAD (lanjutan 16 Okt 2026)
+-- Tiap lowongan punya tingkat (kecil/sedang/tinggi). Talenta baru hanya bisa
+-- mendaftar ke proyek kecil; tingkat berikutnya terbuka setelah ada proyek
+-- yang selesai. Admin mengelompokkan talenta yang sudah diteruskan menjadi
+-- squad (maks 4 orang) dengan link grup; anggota bisa menandai dirinya izin.
+-- ════════════════════════════════════════════════════════════════════
+alter table public.opportunities add column if not exists level text not null default 'kecil'
+  constraint opportunities_level_check check (level in ('kecil', 'sedang', 'tinggi'));
+
+create or replace function public.level_rank(p_level text)
+returns integer
+language sql
+immutable
+set search_path = ''
+as $$
+  select case p_level when 'kecil' then 1 when 'sedang' then 2 when 'tinggi' then 3 else 1 end;
+$$;
+
+-- Tingkat tertinggi yang boleh diambil = 1 + tingkat tertinggi proyek yang sudah selesai (maks 3).
+create or replace function public.talent_tier(p_user uuid)
+returns integer
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select least(3, 1 + coalesce(max(public.level_rank(o.level)), 0))
+  from public.applications a
+  join public.opportunities o on o.id = a.opportunity_id
+  where a.user_id = p_user and a.status = 'selesai';
+$$;
+
+create or replace function public.my_talent_tier()
+returns integer
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select public.talent_tier((select auth.uid()));
+$$;
+
+revoke all on function public.talent_tier(uuid) from public, anon, authenticated;
+revoke all on function public.my_talent_tier() from public, anon;
+grant execute on function public.my_talent_tier() to authenticated;
+
+-- Tingkat ikut diperiksa: mengubahnya mengembalikan lowongan ke "menunggu".
+create or replace function public.opportunities_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  admin boolean := public.is_admin();
+begin
+  if tg_op = 'INSERT' then
+    select o.name, o.kind into new.org_name, new.org_kind from public.organizations o where o.id = new.org_id;
+    if not admin then
+      new.review_status := 'menunggu';
+      new.admin_note := '';
+    end if;
+    return new;
+  end if;
+
+  new.org_id := old.org_id;
+  if not admin then
+    new.admin_note := old.admin_note;
+    if (new.title, new.category, new.kind, new.province, new.city, new.remote, new.description,
+        new.requirements, new.stipend, new.duration, new.slots, new.deadline, new.tags, new.level)
+       is distinct from
+       (old.title, old.category, old.kind, old.province, old.city, old.remote, old.description,
+        old.requirements, old.stipend, old.duration, old.slots, old.deadline, old.tags, old.level) then
+      new.review_status := 'menunggu';
+    else
+      new.review_status := old.review_status;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+grant insert (level) on public.opportunities to authenticated;
+grant update (level) on public.opportunities to authenticated;
+
+-- ── squad ──
+create table if not exists public.squads (
+  id              uuid primary key default gen_random_uuid(),
+  opportunity_id  uuid not null references public.opportunities (id) on delete cascade,
+  name            text not null check (char_length(name) between 2 and 60),
+  contact_link    text check (contact_link is null or (contact_link ~ '^https://[^[:space:]]+$' and char_length(contact_link) <= 300)),
+  note            text not null default '' check (char_length(note) <= 300),
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create index if not exists squads_opportunity_idx on public.squads (opportunity_id);
+
+create or replace function public.squads_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  new.opportunity_id := old.opportunity_id;
+  new.created_at := old.created_at;
+  return new;
+end;
+$$;
+
+drop trigger if exists squads_guard on public.squads;
+create trigger squads_guard
+  before update on public.squads
+  for each row execute function public.squads_guard();
+
+drop trigger if exists squads_set_updated_at on public.squads;
+create trigger squads_set_updated_at
+  before update on public.squads
+  for each row execute function public.set_updated_at();
+
+alter table public.applications add column if not exists squad_id uuid references public.squads (id) on delete set null;
+alter table public.applications add column if not exists availability text not null default 'siap'
+  constraint applications_availability_check check (availability in ('siap', 'izin'));
+alter table public.applications add column if not exists availability_note text not null default ''
+  constraint applications_availability_note_check check (char_length(availability_note) <= 120);
+create index if not exists applications_squad_idx on public.applications (squad_id);
+-- Kapan lamaran pertama kali diteruskan ke mitra (diisi trigger, tidak bisa diubah klien).
+alter table public.applications add column if not exists forwarded_at timestamptz;
+update public.applications set forwarded_at = updated_at
+  where forwarded_at is null and status in ('diteruskan', 'diterima', 'bekerja', 'selesai');
+
+alter table public.squads enable row level security;
+
+drop policy if exists "squads: admin, mitra lowongannya, dan anggota membaca" on public.squads;
+create policy "squads: admin, mitra lowongannya, dan anggota membaca"
+  on public.squads for select
+  to authenticated
+  using (
+    (select public.is_admin())
+    or exists (
+      select 1 from public.opportunities o join public.organizations g on g.id = o.org_id
+      where o.id = opportunity_id and g.owner_id = (select auth.uid())
+    )
+    or exists (select 1 from public.applications a where a.squad_id = squads.id and a.user_id = (select auth.uid()))
+  );
+
+drop policy if exists "squads: admin membuat" on public.squads;
+create policy "squads: admin membuat"
+  on public.squads for insert
+  to authenticated
+  with check ((select public.is_admin()));
+
+drop policy if exists "squads: admin mengubah" on public.squads;
+create policy "squads: admin mengubah"
+  on public.squads for update
+  to authenticated
+  using ((select public.is_admin()));
+
+drop policy if exists "squads: admin menghapus" on public.squads;
+create policy "squads: admin menghapus"
+  on public.squads for delete
+  to authenticated
+  using ((select public.is_admin()));
+
+revoke all on public.squads from anon, authenticated;
+grant select, delete on public.squads to authenticated;
+grant insert (opportunity_id, name, contact_link, note) on public.squads to authenticated;
+grant update (name, contact_link, note) on public.squads to authenticated;
+
+grant update (squad_id, availability, availability_note) on public.applications to authenticated;
+
+-- Lamaran: aturan lama + tangga proyek (saat mendaftar), squad (hanya admin,
+-- lowongan sama, setelah diteruskan, maks 4), dan izin (hanya pemilik lamaran).
+create or replace function public.applications_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := (select auth.uid());
+  admin boolean := public.is_admin();
+  is_org boolean;
+  opp_level text;
+begin
+  if tg_op = 'INSERT' then
+    select o.title, o.org_name, o.level into new.opportunity_title, new.org_name, opp_level
+      from public.opportunities o
+      where o.id = new.opportunity_id and o.review_status = 'disetujui' and not o.closed;
+    if not found then
+      raise exception 'Lowongan ini sudah ditutup atau belum dibuka.' using errcode = 'P0001';
+    end if;
+    if public.level_rank(opp_level) > public.talent_tier(new.user_id) then
+      if opp_level = 'sedang' then
+        raise exception 'Proyek tingkat sedang terbuka setelah kamu menyelesaikan satu proyek kecil.' using errcode = 'P0001';
+      end if;
+      raise exception 'Proyek tingkat tinggi terbuka setelah kamu menyelesaikan satu proyek tingkat sedang.' using errcode = 'P0001';
+    end if;
+    if new.roadmap_id is not null then
+      select left(r.summary, 600) into new.profile_summary from public.roadmaps r
+        where r.id = new.roadmap_id and r.user_id = new.user_id;
+      if not found then
+        new.roadmap_id := null;
+        new.profile_summary := '';
+      end if;
+    else
+      new.profile_summary := '';
+    end if;
+    new.status := 'dikirim';
+    new.admin_note := '';
+    new.org_note := '';
+    new.squad_id := null;
+    new.availability := 'siap';
+    new.availability_note := '';
+    new.forwarded_at := null;
+    return new;
+  end if;
+
+  -- Isi lamaran tetap.
+  new.opportunity_id := old.opportunity_id;
+  new.user_id := old.user_id;
+  new.applicant_name := old.applicant_name;
+  new.profile_summary := old.profile_summary;
+  new.opportunity_title := old.opportunity_title;
+  new.org_name := old.org_name;
+  new.contact := old.contact;
+  new.motivation := old.motivation;
+  new.portfolio_url := old.portfolio_url;
+  new.cv_url := old.cv_url;
+  new.roadmap_id := old.roadmap_id;
+
+  is_org := exists (
+    select 1 from public.opportunities o join public.organizations g on g.id = o.org_id
+    where o.id = old.opportunity_id and g.owner_id = uid
+  );
+  if not admin then new.admin_note := old.admin_note; end if;
+  if not is_org then new.org_note := old.org_note; end if;
+  if old.user_id is distinct from uid then
+    new.availability := old.availability;
+    new.availability_note := old.availability_note;
+  end if;
+
+  if new.status is distinct from old.status then
+    if admin and new.status in ('dikirim', 'diproses', 'diteruskan', 'ditolak') then
+      null;
+    elsif is_org and old.status in ('diteruskan', 'diterima', 'bekerja', 'selesai')
+          and new.status in ('diterima', 'bekerja', 'selesai', 'ditolak') then
+      null;
+    elsif old.user_id = uid and new.status = 'dibatalkan' and old.status in ('dikirim', 'diproses') then
+      null;
+    else
+      raise exception 'Perubahan status lamaran ini tidak diizinkan.' using errcode = '42501';
+    end if;
+  end if;
+
+  if new.squad_id is distinct from old.squad_id then
+    if not admin then
+      raise exception 'Hanya admin yang bisa mengatur squad.' using errcode = '42501';
+    end if;
+    if new.squad_id is not null then
+      if not exists (select 1 from public.squads s where s.id = new.squad_id and s.opportunity_id = old.opportunity_id) then
+        raise exception 'Squad ini dibuat untuk lowongan lain.' using errcode = 'P0001';
+      end if;
+      if new.status not in ('diteruskan', 'diterima', 'bekerja') then
+        raise exception 'Masukkan ke squad setelah pendaftar diteruskan ke mitra.' using errcode = 'P0001';
+      end if;
+      if (select count(*) from public.applications a where a.squad_id = new.squad_id and a.id <> old.id) >= 4 then
+        raise exception 'Satu squad maksimal 4 orang.' using errcode = 'P0001';
+      end if;
+    end if;
+  end if;
+
+  -- Yang ditolak atau membatalkan keluar dari squad.
+  if new.status in ('ditolak', 'dibatalkan') then
+    new.squad_id := null;
+  end if;
+  if old.forwarded_at is null and new.status = 'diteruskan' then
+    new.forwarded_at := now();
+  else
+    new.forwarded_at := old.forwarded_at;
+  end if;
+  return new;
+end;
+$$;
+
+-- Teman satu squad hanya saling melihat nama, status, dan izin (kontak & CV tetap privat).
+create or replace function public.squad_members(p_squad uuid)
+returns table (application_id uuid, name text, availability text, availability_note text, status text, is_me boolean)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select a.id, a.applicant_name, a.availability, a.availability_note, a.status, a.user_id = (select auth.uid())
+  from public.applications a
+  where a.squad_id = p_squad
+    and (
+      public.is_admin()
+      or exists (select 1 from public.applications me where me.squad_id = p_squad and me.user_id = (select auth.uid()))
+      or exists (
+        select 1 from public.squads s
+        join public.opportunities o on o.id = s.opportunity_id
+        join public.organizations g on g.id = o.org_id
+        where s.id = p_squad and g.owner_id = (select auth.uid())
+      )
+    )
+  order by a.created_at;
+$$;
+
+revoke all on function public.squad_members(uuid) from public, anon;
+grant execute on function public.squad_members(uuid) to authenticated;
+
+-- Mitra juga melihat dan boleh menolak talenta yang PERNAH diteruskan kepadanya
+-- (sebelumnya penolakan oleh mitra terblokir RLS karena "ditolak" bukan status yang terlihat).
+-- Lamaran yang ditolak admin sebelum diteruskan tetap tidak terlihat mitra.
+drop policy if exists "applications: mitra membaca yang diteruskan" on public.applications;
+create policy "applications: mitra membaca yang diteruskan"
+  on public.applications for select
+  to authenticated
+  using (
+    (status in ('diteruskan', 'diterima', 'bekerja', 'selesai') or (status = 'ditolak' and forwarded_at is not null))
+    and exists (
+      select 1 from public.opportunities o join public.organizations g on g.id = o.org_id
+      where o.id = opportunity_id and g.owner_id = (select auth.uid())
+    )
+  );
+
+drop policy if exists "applications: pihak terkait boleh mengubah status" on public.applications;
+create policy "applications: pihak terkait boleh mengubah status"
+  on public.applications for update
+  to authenticated
+  using (
+    user_id = (select auth.uid())
+    or (select public.is_admin())
+    or (
+      (status in ('diteruskan', 'diterima', 'bekerja', 'selesai') or (status = 'ditolak' and forwarded_at is not null))
+      and exists (
+        select 1 from public.opportunities o join public.organizations g on g.id = o.org_id
+        where o.id = opportunity_id and g.owner_id = (select auth.uid())
+      )
+    )
+  )
+  with check (
+    user_id = (select auth.uid())
+    or (select public.is_admin())
+    or (
+      forwarded_at is not null
+      and exists (
+        select 1 from public.opportunities o join public.organizations g on g.id = o.org_id
+        where o.id = opportunity_id and g.owner_id = (select auth.uid())
+      )
+    )
+  );
+
 -- ────────────────────────────────────────────────────────────────────
 -- Seed katalog (54 sumber)
 -- ────────────────────────────────────────────────────────────────────

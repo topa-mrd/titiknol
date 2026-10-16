@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { OPPORTUNITY_KIND_LABEL, POSITION_LABEL, locationLabel } from "@/lib/opportunities";
 import type { Opportunity } from "@/lib/types";
 import { Sep } from "../Sep";
+import { LevelBadge } from "./Ladder";
 
 const dateFormat = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
@@ -36,7 +37,8 @@ export function OpportunityCard({
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs font-emphasis">
-        <span className="rounded-full bg-brand-soft px-2.5 py-1 text-brand-ink">{OPPORTUNITY_KIND_LABEL[o.kind]}</span>
+        <LevelBadge level={o.level} />
+        <span className="rounded-full bg-surface-muted px-2.5 py-1 text-ink">{OPPORTUNITY_KIND_LABEL[o.kind]}</span>
         {matched.length > 0 && (
           <span className="rounded-full bg-leaf-soft px-2.5 py-1 text-leaf-ink">Cocok untukmu: {matched.join(", ")}</span>
         )}

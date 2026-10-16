@@ -4,11 +4,12 @@ import { useId, useState, type FormEvent } from "react";
 import { fieldClass, fieldErrors } from "@/components/experience/form";
 import { AlertIcon } from "@/components/icons";
 import { buttonClass } from "@/components/ui";
-import { OPPORTUNITY_KIND_LABEL, POSITION_LABEL } from "@/lib/opportunities";
+import { LEVEL_HINT, LEVEL_LABEL, OPPORTUNITY_KIND_LABEL, POSITION_LABEL } from "@/lib/opportunities";
 import { PROVINCES } from "@/lib/regions";
 import { StoreError, saveOpportunity } from "@/lib/store";
 import {
   OPPORTUNITY_KINDS,
+  OPPORTUNITY_LEVELS,
   OpportunityInputSchema,
   POSITION_CATEGORIES,
   type Opportunity,
@@ -43,6 +44,7 @@ type Draft = {
   slots: string;
   deadline: string;
   tags: string;
+  level: OpportunityInput["level"] & string;
 };
 
 const fromOpportunity = (o: Opportunity | null, org: Organization): Draft => ({
@@ -59,6 +61,7 @@ const fromOpportunity = (o: Opportunity | null, org: Organization): Draft => ({
   slots: String(o?.slots ?? 1),
   deadline: o?.deadline ?? "",
   tags: (o?.tags ?? []).join(", "),
+  level: o?.level ?? "kecil",
 });
 
 /** Buat/ubah lowongan. Setiap simpan membuat lowongan menunggu verifikasi admin lagi. */
@@ -96,6 +99,7 @@ export function OpportunityForm({
       slots: Number(d.slots),
       deadline: d.deadline || null,
       tags: [...new Set(d.tags.split(",").map((t) => t.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean))],
+      level: d.level,
     };
     const parsed = OpportunityInputSchema.safeParse(input);
     if (!parsed.success) {
@@ -150,6 +154,19 @@ export function OpportunityForm({
             </option>
           ))}
         </select>
+      </label>
+      <label className="text-sm font-emphasis">
+        Tingkat proyek
+        <select className={fieldClass} value={d.level} onChange={(e) => set("level", e.target.value as Draft["level"])} aria-describedby={`${id}-level-hint`}>
+          {OPPORTUNITY_LEVELS.map((l) => (
+            <option key={l} value={l}>
+              {LEVEL_LABEL[l]}
+            </option>
+          ))}
+        </select>
+        <span id={`${id}-level-hint`} className="mt-1 block text-xs leading-relaxed font-medium text-ink-muted">
+          {LEVEL_HINT[d.level]} Talenta baru hanya bisa mendaftar proyek kecil.
+        </span>
       </label>
       <label className="text-sm font-emphasis">
         Provinsi

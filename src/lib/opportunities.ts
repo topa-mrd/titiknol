@@ -1,9 +1,11 @@
 import { TAG_KEYWORDS, roadmapKeywords } from "./projects";
 import type { Province } from "./regions";
 import type {
+  Application,
   ApplicationStatus,
   Opportunity,
   OpportunityKind,
+  OpportunityLevel,
   OrgKind,
   PositionCategory,
   RoadmapRow,
@@ -83,9 +85,10 @@ export type OpportunityFilter = {
   category: PositionCategory | "semua";
   /** Provinsi, "online", atau "semua". */
   place: Province | "online" | "semua";
+  level: OpportunityLevel | "semua";
 };
 
-export const EMPTY_FILTER: OpportunityFilter = { q: "", category: "semua", place: "semua" };
+export const EMPTY_FILTER: OpportunityFilter = { q: "", category: "semua", place: "semua", level: "semua" };
 
 const normalize = (v: string) => v.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}\s]/gu, " ");
 
@@ -94,6 +97,7 @@ export function filterOpportunities(list: readonly Opportunity[], f: Opportunity
   const words = normalize(f.q).split(/\s+/).filter(Boolean);
   return list.filter((o) => {
     if (f.category !== "semua" && o.category !== f.category) return false;
+    if (f.level !== "semua" && o.level !== f.level) return false;
     if (f.place === "online" && !o.remote) return false;
     if (f.place !== "online" && f.place !== "semua" && o.province !== f.place) return false;
     if (words.length === 0) return true;
@@ -105,10 +109,45 @@ export function filterOpportunities(list: readonly Opportunity[], f: Opportunity
 const hasWord = (text: string, keyword: string) =>
   new RegExp(`(^|[^\\p{L}\\p{N}])${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "u").test(text);
 
+// ───────────────────────── Tangga proyek ─────────────────────────
+
+export const LEVEL_LABEL: Record<OpportunityLevel, string> = { kecil: "Proyek kecil", sedang: "Proyek sedang", tinggi: "Proyek tinggi" };
+export const LEVEL_HINT: Record<OpportunityLevel, string> = {
+  kecil: "Risiko kecil, tugas jelas, cocok untuk pengalaman pertama.",
+  sedang: "Tanggung jawab lebih besar, butuh pengalaman dari proyek kecil.",
+  tinggi: "Proyek besar atau berjangka panjang, untuk yang sudah teruji di proyek sedang.",
+};
+export const levelRank = (level: OpportunityLevel) => ({ kecil: 1, sedang: 2, tinggi: 3 })[level];
+const LEVEL_BY_RANK = ["kecil", "sedang", "tinggi"] as const satisfies readonly OpportunityLevel[];
+
+/**
+ * Tingkat tertinggi yang boleh diambil (1–3) = 1 + tingkat tertinggi proyek yang
+ * sudah selesai. Sama dengan fungsi `talent_tier` di database.
+ */
+export function talentTier(applications: readonly Pick<Application, "status" | "opportunityId">[], opportunities: readonly Opportunity[]): number {
+  const levels = new Map(opportunities.map((o) => [o.id, o.level]));
+  const done = applications.filter((a) => a.status === "selesai").map((a) => levelRank(levels.get(a.opportunityId) ?? "kecil"));
+  return Math.min(3, 1 + Math.max(0, ...done));
+}
+
+export const tierLevel = (tier: number): OpportunityLevel => LEVEL_BY_RANK[Math.min(3, Math.max(1, tier)) - 1];
+export const canTake = (level: OpportunityLevel, tier: number) => levelRank(level) <= tier;
+
+/** Kalimat syarat untuk tingkat yang masih terkunci. */
+export function unlockHint(level: OpportunityLevel): string {
+  return level === "tinggi"
+    ? "Terbuka setelah kamu menyelesaikan satu proyek tingkat sedang."
+    : "Terbuka setelah kamu menyelesaikan satu proyek kecil.";
+}
+
 export type RankedOpportunity = { opportunity: Opportunity; matched: string[] };
 
-/** Urutkan lowongan menurut kecocokan dengan roadmap; urutan asli dipertahankan untuk nilai sama. */
-export function rankOpportunities(list: readonly Opportunity[], roadmap: RoadmapRow | null): RankedOpportunity[] {
+/**
+ * Urutkan lowongan. Dengan `tier`: yang bisa diambil sesuai tangga proyek lebih
+ * dulu (tingkat yang sedang dijalani paling atas), lalu menurut kecocokan dengan
+ * roadmap. Tanpa `tier`: kecocokan roadmap saja. Urutan asli dipertahankan untuk nilai sama.
+ */
+export function rankOpportunities(list: readonly Opportunity[], roadmap: RoadmapRow | null, tier?: number): RankedOpportunity[] {
   const text = roadmap ? roadmapKeywords(roadmap) : "";
   return list
     .map((opportunity, order) => {
@@ -116,7 +155,16 @@ export function rankOpportunities(list: readonly Opportunity[], roadmap: Roadmap
       const matched = text ? tags.filter((tag) => [tag, ...(TAG_KEYWORDS[tag] ?? [])].some((k) => hasWord(text, k))) : [];
       return { opportunity, matched, order };
     })
-    .sort((a, b) => b.matched.length - a.matched.length || a.order - b.order)
+    .sort((a, b) => {
+      // Tanpa tingkat talenta (mis. katalog umum): urutkan menurut kecocokan roadmap saja.
+      if (tier === undefined) return b.matched.length - a.matched.length || a.order - b.order;
+      const lockA = canTake(a.opportunity.level, tier) ? 0 : 1;
+      const lockB = canTake(b.opportunity.level, tier) ? 0 : 1;
+      // Di antara yang terbuka, tingkat yang setara tingkat talenta saat ini didahulukan.
+      const fitA = levelRank(a.opportunity.level) === tier ? 0 : 1;
+      const fitB = levelRank(b.opportunity.level) === tier ? 0 : 1;
+      return lockA - lockB || fitA - fitB || b.matched.length - a.matched.length || a.order - b.order;
+    })
     .map(({ opportunity, matched }) => ({ opportunity, matched }));
 }
 
@@ -368,9 +416,22 @@ const SAMPLES: readonly (Sample & { id: string })[] = [
   },
 ];
 
+/** Tangga proyek contoh: proyek singkat/relawan = kecil, magang & paruh waktu berbulan-bulan = sedang, kontrak kerja = tinggi. */
+const SAMPLE_LEVELS: Partial<Record<string, OpportunityLevel>> = {
+  "contoh-riset-aplikasi-antrean": "sedang",
+  "contoh-dashboard-toko-kelontong": "sedang",
+  "contoh-konten-koperasi-tani": "sedang",
+  "contoh-chatbot-faq-sekolah": "sedang",
+  "contoh-asisten-kebun-hidroponik": "sedang",
+  "contoh-juru-masak-katering": "sedang",
+  "contoh-magang-it-support": "sedang",
+  "contoh-admin-gudang-online": "tinggi",
+};
+
 /** Lowongan contoh, dipakai saat mode demo dan saat database belum punya lowongan. */
 export const SAMPLE_OPPORTUNITIES: readonly Opportunity[] = SAMPLES.map((s) => ({
   ...s,
+  level: SAMPLE_LEVELS[s.id] ?? "kecil",
   orgId: "contoh",
   deadline: null,
   review: "disetujui",

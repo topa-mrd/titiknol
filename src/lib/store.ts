@@ -1,7 +1,7 @@
 import type { AuthError, PostgrestError, User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "./supabase/client";
 import { z } from "zod";
-import { SAMPLE_OPPORTUNITIES } from "./opportunities";
+import { LEVEL_LABEL, SAMPLE_OPPORTUNITIES, canTake, talentTier, unlockHint } from "./opportunities";
 import { SAMPLE_STORIES, type Story } from "./stories";
 import {
   ADMIN_APPLICATION_STATUSES,
@@ -13,6 +13,10 @@ import {
   ORG_APPLICATION_STATUSES,
   OrganizationInputSchema,
   OrganizationSchema,
+  MAX_SQUAD_SIZE,
+  SquadInputSchema,
+  SquadMemberSchema,
+  SquadSchema,
   VISIBLE_TO_ORG,
   AdminResourceSchema,
   CatalogLinkSchema,
@@ -48,6 +52,9 @@ import {
   type StoryInput,
   type StoryKind,
   type StoryStatus,
+  type Squad,
+  type SquadInput,
+  type SquadMember,
 } from "./types";
 
 export type { Story } from "./stories";
@@ -857,7 +864,7 @@ const fromOrgRow = (r: OrgRow): Organization =>
   });
 
 const OPP_COLUMNS =
-  "id, org_id, org_name, org_kind, title, category, kind, province, city, remote, description, requirements, stipend, duration, slots, deadline, tags, review_status, admin_note, closed, created_at";
+  "id, org_id, org_name, org_kind, title, category, kind, province, city, remote, description, requirements, stipend, duration, slots, deadline, tags, level, review_status, admin_note, closed, created_at";
 
 type OppRow = {
   id: string;
@@ -877,6 +884,7 @@ type OppRow = {
   slots: number;
   deadline: string | null;
   tags: string[];
+  level: string;
   review_status: string;
   admin_note: string;
   closed: boolean;
@@ -902,6 +910,7 @@ const fromOppRow = (r: OppRow): Opportunity | null => {
     slots: r.slots,
     deadline: r.deadline,
     tags: r.tags ?? [],
+    level: r.level ?? "kecil",
     review: r.review_status,
     adminNote: r.admin_note ?? "",
     closed: r.closed,
@@ -925,10 +934,11 @@ const toOppRow = (o: ReturnType<typeof OpportunityInputSchema.parse>) => ({
   slots: o.slots,
   deadline: o.deadline,
   tags: o.tags,
+  level: o.level,
 });
 
 const APP_COLUMNS =
-  "id, opportunity_id, user_id, applicant_name, profile_summary, opportunity_title, org_name, contact, motivation, portfolio_url, cv_url, roadmap_id, status, admin_note, org_note, created_at, updated_at";
+  "id, opportunity_id, user_id, applicant_name, profile_summary, opportunity_title, org_name, contact, motivation, portfolio_url, cv_url, roadmap_id, status, admin_note, org_note, created_at, updated_at, squad_id, availability, availability_note, forwarded_at";
 
 type AppRow = {
   id: string;
@@ -948,6 +958,10 @@ type AppRow = {
   org_note: string;
   created_at: string;
   updated_at: string;
+  squad_id: string | null;
+  availability: string | null;
+  availability_note: string | null;
+  forwarded_at: string | null;
 };
 
 const fromAppRow = (r: AppRow): Application | null => {
@@ -969,6 +983,10 @@ const fromAppRow = (r: AppRow): Application | null => {
     orgNote: r.org_note ?? "",
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    squadId: r.squad_id ?? null,
+    availability: r.availability ?? "siap",
+    availabilityNote: r.availability_note ?? "",
+    forwardedAt: r.forwarded_at ?? null,
   });
   return parsed.success ? parsed.data : null;
 };
@@ -1054,6 +1072,8 @@ export async function applyToOpportunity(input: ApplicationInput): Promise<Appli
     if (demoApps().some((a) => a.userId === user.id && a.opportunityId === v.opportunityId)) {
       throw new StoreError("Kamu sudah mendaftar ke lowongan ini.", "invalid");
     }
+    const tier = talentTier(demoApps().filter((a) => a.userId === user.id), allDemoOpps());
+    if (!canTake(opp.level, tier)) throw new StoreError(`${LEVEL_LABEL[opp.level]} ${unlockHint(opp.level).toLowerCase()}`, "invalid");
     const roadmap = v.roadmapId ? demoRows().find((r) => r.id === v.roadmapId && r.user_id === user.id) : undefined;
     const at = nowIso();
     return saveDemoApp({
@@ -1074,6 +1094,10 @@ export async function applyToOpportunity(input: ApplicationInput): Promise<Appli
       orgNote: "",
       createdAt: at,
       updatedAt: at,
+      squadId: null,
+      availability: "siap",
+      availabilityNote: "",
+      forwardedAt: null,
     });
   }
 
@@ -1111,12 +1135,16 @@ async function updateApplication(
     const user = requireDemoUser();
     const app = demoApps().find((a) => a.id === id);
     if (!app || !demoCheck(app, user)) throw new StoreError("Perubahan status lamaran ini tidak diizinkan.", "invalid");
+    const status = patch.status ?? app.status;
     return saveDemoApp({
       ...app,
-      status: patch.status ?? app.status,
+      status,
       adminNote: patch.admin_note ?? app.adminNote,
       orgNote: patch.org_note ?? app.orgNote,
       updatedAt: nowIso(),
+      // Sama dengan trigger: yang ditolak/membatalkan keluar dari squad; tanggal diteruskan dicatat sekali.
+      squadId: status === "ditolak" || status === "dibatalkan" ? null : app.squadId,
+      forwardedAt: app.forwardedAt ?? (status === "diteruskan" ? nowIso() : null),
     });
   }
   const { supabase } = await requireSupabaseUser();
@@ -1289,7 +1317,7 @@ export async function listOrgApplications(): Promise<Application[]> {
   if (storeMode() === "demo") {
     const mine = new Set(demoOpps().filter((o) => o.orgId === org.id).map((o) => o.id));
     return demoApps()
-      .filter((a) => mine.has(a.opportunityId) && visible.has(a.status))
+      .filter((a) => mine.has(a.opportunityId) && (visible.has(a.status) || (a.status === "ditolak" && a.forwardedAt)))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
   const supabase = getSupabaseBrowserClient()!;
@@ -1298,7 +1326,7 @@ export async function listOrgApplications(): Promise<Application[]> {
     const { data, error } = await supabase
       .from("applications")
       .select(APP_COLUMNS)
-      .in("status", [...VISIBLE_TO_ORG])
+      .in("status", [...VISIBLE_TO_ORG, "ditolak"])
       .order("updated_at", { ascending: false });
     if (error) throw experienceError(error, "memuat talenta");
     const mine = new Set((await listMyOpportunities()).map((o) => o.id));
@@ -1317,7 +1345,7 @@ export async function updateApplicationByOrg(id: string, status: ApplicationStat
     { status, org_note: orgNote.trim().slice(0, 300) },
     (a) =>
       mine.has(a.opportunityId) &&
-      (VISIBLE_TO_ORG as readonly string[]).includes(a.status) &&
+      ((VISIBLE_TO_ORG as readonly string[]).includes(a.status) || (a.status === "ditolak" && !!a.forwardedAt)) &&
       (status === a.status || (ORG_APPLICATION_STATUSES as readonly string[]).includes(status)),
     "memperbarui status talenta",
   );
@@ -1415,4 +1443,229 @@ export function updateApplicationByAdmin(id: string, status: ApplicationStatus, 
     (a) => status === a.status || (ADMIN_APPLICATION_STATUSES as readonly string[]).includes(status),
     "memperbarui status pendaftar",
   );
+}
+
+// ───────────────────────── Tangga proyek & squad ─────────────────────────
+
+const DEMO_SQUADS_KEY = "titiknol:demo:squads";
+const SQUAD_COLUMNS = "id, opportunity_id, name, contact_link, note, created_at";
+type SquadRow = { id: string; opportunity_id: string; name: string; contact_link: string | null; note: string; created_at: string };
+type SquadRecord = Omit<Squad, "members">;
+
+const demoSquads = () => parseList(readJson(DEMO_SQUADS_KEY, []), SquadSchema.omit({ members: true }));
+const fromSquadRow = (r: SquadRow): SquadRecord => ({
+  id: r.id,
+  opportunityId: r.opportunity_id,
+  name: r.name,
+  contactLink: r.contact_link,
+  note: r.note ?? "",
+  createdAt: r.created_at,
+});
+
+/** Tingkat tertinggi yang boleh diambil (1 = kecil, 2 = sedang, 3 = tinggi). Belum masuk → 1. */
+export async function getMyTier(): Promise<number> {
+  if (storeMode() === "demo") {
+    const user = demoUser();
+    return user ? talentTier(demoApps().filter((a) => a.userId === user.id), allDemoOpps()) : 1;
+  }
+  const supabase = getSupabaseBrowserClient()!;
+  const { data: session } = await supabase.auth.getSession();
+  if (!session.session) return 1;
+  try {
+    const { data, error } = await supabase.rpc("my_talent_tier");
+    return error || typeof data !== "number" ? 1 : data;
+  } catch {
+    return 1;
+  }
+}
+
+/** Anggota squad (hanya nama, status, izin). Mode demo meniru fungsi `squad_members`. */
+async function membersOf(squad: SquadRecord, meId: string | null): Promise<SquadMember[]> {
+  if (storeMode() === "demo") {
+    return demoApps()
+      .filter((a) => a.squadId === squad.id)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((a) => ({
+        applicationId: a.id,
+        name: a.applicantName,
+        status: a.status,
+        availability: a.availability,
+        availabilityNote: a.availabilityNote,
+        isMe: a.userId === meId,
+      }));
+  }
+  const supabase = getSupabaseBrowserClient()!;
+  const { data, error } = await supabase.rpc("squad_members", { p_squad: squad.id });
+  if (error) throw experienceError(error, "memuat anggota squad");
+  type MemberRow = { application_id: string; name: string; status: string; availability: string; availability_note: string; is_me: boolean };
+  return parseList(
+    ((data ?? []) as MemberRow[]).map((m) => ({
+      applicationId: m.application_id,
+      name: m.name,
+      status: m.status,
+      availability: m.availability,
+      availabilityNote: m.availability_note ?? "",
+      isMe: m.is_me,
+    })),
+    SquadMemberSchema,
+  );
+}
+
+async function withMembers(records: SquadRecord[]): Promise<Squad[]> {
+  const meId = storeMode() === "demo" ? (demoUser()?.id ?? null) : null;
+  return Promise.all(records.map(async (r) => ({ ...r, members: await membersOf(r, meId) })));
+}
+
+/** Squad yang terlihat oleh akun ini (RLS: admin semua, mitra lowongannya, talenta squad-nya). */
+async function visibleSquads(action: string): Promise<SquadRecord[]> {
+  const { supabase } = await requireSupabaseUser();
+  try {
+    const { data, error } = await supabase.from("squads").select(SQUAD_COLUMNS).order("created_at", { ascending: true }).limit(300);
+    if (error) throw experienceError(error, action);
+    return ((data ?? []) as SquadRow[]).map(fromSquadRow);
+  } catch (error) {
+    throw error instanceof StoreError ? error : networkError();
+  }
+}
+
+/** Squad milik talenta (dari lamarannya yang sudah dimasukkan admin ke squad). */
+export async function listMySquads(): Promise<Squad[]> {
+  if (storeMode() === "demo") {
+    const user = requireDemoUser();
+    const ids = new Set(demoApps().filter((a) => a.userId === user.id && a.squadId).map((a) => a.squadId));
+    return withMembers(demoSquads().filter((sq) => ids.has(sq.id)));
+  }
+  // Akun yang juga admin bisa membaca semua squad: batasi ke squad dari lamarannya sendiri.
+  const mine = new Set((await listMyApplications()).map((a) => a.squadId).filter(Boolean));
+  if (mine.size === 0) return [];
+  return withMembers((await visibleSquads("memuat squad")).filter((sq) => mine.has(sq.id)));
+}
+
+/** Squad di lowongan-lowongan milik mitra ini. */
+export async function listOrgSquads(): Promise<Squad[]> {
+  const opps = new Set((await listMyOpportunities()).map((o) => o.id));
+  if (storeMode() === "demo") return withMembers(demoSquads().filter((sq) => opps.has(sq.opportunityId)));
+  return withMembers((await visibleSquads("memuat squad")).filter((sq) => opps.has(sq.opportunityId)));
+}
+
+/** Admin: semua squad. */
+export async function listSquadsForAdmin(): Promise<Squad[]> {
+  if (storeMode() === "demo") {
+    requireDemoUser();
+    return withMembers(demoSquads());
+  }
+  return withMembers(await visibleSquads("memuat squad"));
+}
+
+/** Admin: buat (tanpa id) atau ubah squad untuk sebuah lowongan. */
+export async function saveSquad(opportunityId: string, input: SquadInput, id?: string): Promise<Squad> {
+  const parsed = SquadInputSchema.safeParse(input);
+  if (!parsed.success) throw invalidInput(parsed.error.issues[0]);
+  const v = parsed.data;
+  if (storeMode() === "demo") {
+    requireDemoUser();
+    const existing = id ? demoSquads().find((sq) => sq.id === id) : undefined;
+    if (id && !existing) throw new StoreError("Squad tidak ditemukan.", "not-found");
+    const record: SquadRecord = {
+      id: existing?.id ?? newId(),
+      opportunityId: existing?.opportunityId ?? opportunityId,
+      name: v.name,
+      contactLink: v.contactLink,
+      note: v.note,
+      createdAt: existing?.createdAt ?? nowIso(),
+    };
+    writeJson(DEMO_SQUADS_KEY, [...demoSquads().filter((sq) => sq.id !== record.id), record]);
+    return (await withMembers([record]))[0];
+  }
+  const { supabase } = await requireSupabaseUser();
+  const row = { name: v.name, contact_link: v.contactLink, note: v.note };
+  try {
+    const query = id
+      ? supabase.from("squads").update(row).eq("id", id).select(SQUAD_COLUMNS).maybeSingle()
+      : supabase.from("squads").insert({ ...row, opportunity_id: opportunityId }).select(SQUAD_COLUMNS).maybeSingle();
+    const { data, error } = await query;
+    if (error) throw experienceError(error, "menyimpan squad");
+    if (!data) throw new StoreError("Squad tidak tersimpan. Pastikan akunmu terdaftar sebagai admin.", "auth");
+    return (await withMembers([fromSquadRow(data as SquadRow)]))[0];
+  } catch (error) {
+    throw error instanceof StoreError ? error : networkError();
+  }
+}
+
+/** Admin: hapus squad (anggotanya otomatis keluar dari squad). */
+export async function deleteSquad(id: string): Promise<void> {
+  if (storeMode() === "demo") {
+    requireDemoUser();
+    writeJson(DEMO_SQUADS_KEY, demoSquads().filter((sq) => sq.id !== id));
+    writeJson(DEMO_APPS_KEY, demoApps().map((a) => (a.squadId === id ? { ...a, squadId: null } : a)));
+    return;
+  }
+  const { supabase } = await requireSupabaseUser();
+  try {
+    const { error } = await supabase.from("squads").delete().eq("id", id);
+    if (error) throw experienceError(error, "menghapus squad");
+  } catch (error) {
+    throw error instanceof StoreError ? error : networkError();
+  }
+}
+
+/** Admin: masukkan pendaftar ke squad (atau keluarkan dengan null). Aturan sama dengan trigger. */
+export async function assignToSquad(applicationId: string, squadId: string | null): Promise<Application> {
+  if (storeMode() === "demo") {
+    requireDemoUser();
+    const app = demoApps().find((a) => a.id === applicationId);
+    if (!app) throw new StoreError("Pendaftar tidak ditemukan.", "not-found");
+    if (squadId) {
+      const squad = demoSquads().find((sq) => sq.id === squadId);
+      if (!squad || squad.opportunityId !== app.opportunityId) throw new StoreError("Squad ini dibuat untuk lowongan lain.", "invalid");
+      if (!["diteruskan", "diterima", "bekerja"].includes(app.status)) {
+        throw new StoreError("Masukkan ke squad setelah pendaftar diteruskan ke mitra.", "invalid");
+      }
+      if (demoApps().filter((a) => a.squadId === squadId && a.id !== app.id).length >= MAX_SQUAD_SIZE) {
+        throw new StoreError(`Satu squad maksimal ${MAX_SQUAD_SIZE} orang.`, "invalid");
+      }
+    }
+    return saveDemoApp({ ...app, squadId, updatedAt: nowIso() });
+  }
+  const { supabase } = await requireSupabaseUser();
+  try {
+    const { data, error } = await supabase
+      .from("applications")
+      .update({ squad_id: squadId })
+      .eq("id", applicationId)
+      .select(APP_COLUMNS)
+      .maybeSingle();
+    if (error) throw experienceError(error, "mengatur squad");
+    const row = data ? fromAppRow(data as AppRow) : null;
+    if (!row) throw new StoreError("Pendaftar tidak ditemukan atau kamu tidak punya akses.", "not-found");
+    return row;
+  } catch (error) {
+    throw error instanceof StoreError ? error : networkError();
+  }
+}
+
+/** Talenta: tandai diri izin (berhalangan) atau siap kembali, dengan alasan singkat. */
+export async function setMyAvailability(applicationId: string, availability: "siap" | "izin", note: string): Promise<Application> {
+  const availabilityNote = availability === "izin" ? note.trim().slice(0, 120) : "";
+  if (storeMode() === "demo") {
+    const user = requireDemoUser();
+    const app = demoApps().find((a) => a.id === applicationId && a.userId === user.id);
+    if (!app) throw new StoreError("Lamaran tidak ditemukan.", "not-found");
+    return saveDemoApp({ ...app, availability, availabilityNote, updatedAt: nowIso() });
+  }
+  const { supabase } = await requireSupabaseUser();
+  try {
+    const { data, error } = await supabase
+      .from("applications")
+      .update({ availability, availability_note: availabilityNote })
+      .eq("id", applicationId)
+      .select(APP_COLUMNS)
+      .maybeSingle();
+    if (error) throw experienceError(error, "menyimpan status izin");
+    const row = data ? fromAppRow(data as AppRow) : null;
+    if (!row) throw new StoreError("Lamaran tidak ditemukan.", "not-found");
+    return row;
+  } catch (error) {
+    throw error instanceof StoreError ? error : networkError();
+  }
 }

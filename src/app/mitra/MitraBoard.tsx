@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { StatusChip } from "@/components/experience/ApplicationProgress";
+import { SquadPanel } from "@/components/experience/SquadPanel";
 import { OpportunityCard } from "@/components/experience/OpportunityCard";
 import { fieldClass } from "@/components/experience/form";
 import { AlertIcon, ExternalIcon } from "@/components/icons";
@@ -17,10 +18,11 @@ import {
   getUser,
   listMyOpportunities,
   listOrgApplications,
+  listOrgSquads,
   setOpportunityClosed,
   updateApplicationByOrg,
 } from "@/lib/store";
-import { ORG_APPLICATION_STATUSES, type Application, type ApplicationStatus, type Opportunity, type Organization } from "@/lib/types";
+import { ORG_APPLICATION_STATUSES, type Application, type ApplicationStatus, type Opportunity, type Organization, type Squad } from "@/lib/types";
 import { OpportunityForm } from "./OpportunityForm";
 import { OrganizationForm } from "./OrganizationForm";
 
@@ -41,15 +43,21 @@ export function MitraBoard() {
   const [tab, setTab] = useState<Tab>("lowongan");
   const [opportunities, setOpportunities] = useState<Opportunity[] | null>(null);
   const [talents, setTalents] = useState<Application[] | null>(null);
+  const [squads, setSquads] = useState<Squad[]>([]);
   const [form, setForm] = useState<{ initial: Opportunity | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     try {
-      const [opps, apps] = await Promise.all([listMyOpportunities(), listOrgApplications()]);
+      const [opps, apps, teams] = await Promise.all([
+        listMyOpportunities(),
+        listOrgApplications(),
+        listOrgSquads().catch(() => [] as Squad[]),
+      ]);
       setOpportunities(opps);
       setTalents(apps);
+      setSquads(teams);
     } catch (e) {
       setError(e instanceof StoreError ? e.message : "Data mitra gagal dimuat. Muat ulang halaman.");
       setOpportunities([]);
@@ -273,6 +281,27 @@ export function MitraBoard() {
 
           {tab === "talenta" && (
             <section className="mt-6" aria-label="Talenta">
+              {squads.length > 0 && (
+                <section aria-labelledby="squad-mitra" className="mb-6">
+                  <h3 id="squad-mitra" className="font-display text-lg font-heading">
+                    Squad di lowonganmu
+                  </h3>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+                    Tim TitikNol mengelompokkan talenta menjadi squad kecil. Kalau ada yang izin, anggota lain tetap bisa
+                    melanjutkan pekerjaan.
+                  </p>
+                  <ul className="mt-2 grid gap-3 md:grid-cols-2">
+                    {squads.map((sq) => (
+                      <li key={sq.id} className="card p-4">
+                        <p className="text-sm font-emphasis text-ink-muted">
+                          {(opportunities ?? []).find((o) => o.id === sq.opportunityId)?.title ?? "Lowongan"}
+                        </p>
+                        <SquadPanel squad={sq} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {talents === null ? (
                 <div aria-hidden="true" className="h-64 animate-pulse rounded-card bg-surface-muted" />
               ) : talents.length === 0 ? (

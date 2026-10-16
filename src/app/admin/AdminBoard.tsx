@@ -12,6 +12,7 @@ import { Sep } from "@/components/Sep";
 import { buttonClass } from "@/components/ui";
 import { RESOURCE_TYPE_LABEL, REVIEW_LABEL } from "@/lib/labels";
 import { loginHref } from "@/lib/safe-next";
+import { SquadSection } from "./SquadAdmin";
 import { StoryModerationSection } from "./StoryAdmin";
 import {
   StoreError,
@@ -53,11 +54,12 @@ const dateFormat = new Intl.DateTimeFormat("id-ID", {
   year: "numeric",
 });
 
-type Section = "lowongan" | "pendaftar" | "tulisan" | "katalog";
+type Section = "lowongan" | "pendaftar" | "squad" | "tulisan" | "katalog";
 
 const SECTIONS: { value: Section; label: string }[] = [
   { value: "lowongan", label: "Lowongan" },
   { value: "pendaftar", label: "Pendaftar" },
+  { value: "squad", label: "Squad" },
   { value: "tulisan", label: "Blog & komunitas" },
   { value: "katalog", label: "Katalog sumber" },
 ];
@@ -158,6 +160,7 @@ export function AdminBoard() {
           </div>
           {section === "lowongan" && <OpportunityReviewSection />}
           {section === "pendaftar" && <ApplicationReviewSection />}
+          {section === "squad" && <SquadSection />}
           {section === "tulisan" && <StoryModerationSection />}
           {section === "katalog" &&
             (demo ? (

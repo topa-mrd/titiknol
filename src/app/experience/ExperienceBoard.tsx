@@ -5,17 +5,22 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
 import { ApplicationProgress, StatusChip } from "@/components/experience/ApplicationProgress";
 import { ApplyDialog } from "@/components/experience/ApplyDialog";
+import { ProjectLadder } from "@/components/experience/Ladder";
 import { OpportunityCard } from "@/components/experience/OpportunityCard";
-import { AlertIcon, ArrowRightIcon, CheckIcon } from "@/components/icons";
+import { SquadPanel } from "@/components/experience/SquadPanel";
+import { AlertIcon, ArrowRightIcon, CheckIcon, LockIcon } from "@/components/icons";
 import { Mascot } from "@/components/Mascot";
 import { StageRail } from "@/components/StageRail";
 import { buttonClass } from "@/components/ui";
 import {
   APPLICATION_STATUS_LABEL,
   EMPTY_FILTER,
+  LEVEL_LABEL,
   POSITION_LABEL,
+  canTake,
   filterOpportunities,
   rankOpportunities,
+  unlockHint,
   type OpportunityFilter,
 } from "@/lib/opportunities";
 import { STRONG_MATCH } from "@/lib/projects";
@@ -24,13 +29,16 @@ import { loginHref } from "@/lib/safe-next";
 import {
   StoreError,
   cancelApplication,
+  getMyTier,
   getUser,
   listMyApplications,
+  listMySquads,
   listOpenOpportunities,
   listRoadmaps,
+  setMyAvailability,
   type AppUser,
 } from "@/lib/store";
-import { POSITION_CATEGORIES, type Application, type Opportunity, type RoadmapRow } from "@/lib/types";
+import { OPPORTUNITY_LEVELS, POSITION_CATEGORIES, type Application, type Opportunity, type RoadmapRow, type Squad } from "@/lib/types";
 import { journeyCompleted } from "@/lib/use-journey";
 
 type Loaded = {
@@ -39,6 +47,9 @@ type Loaded = {
   opportunities: Opportunity[];
   samplesOnly: boolean;
   applications: Application[];
+  /** Tangga proyek: 1 = kecil, 2 = sampai sedang, 3 = semua tingkat. */
+  tier: number;
+  squads: Squad[];
 };
 
 const field =
@@ -61,19 +72,28 @@ export function ExperienceBoard() {
       let applications: Application[] = [];
       let opportunities: Opportunity[] = [];
       let samplesOnly = false;
+      let tier = 1;
+      let squads: Squad[] = [];
       try {
         const open = await listOpenOpportunities();
         opportunities = open.items;
         samplesOnly = open.samplesOnly;
         if (user) {
-          const [roadmaps, mine] = await Promise.all([listRoadmaps(), listMyApplications()]);
+          const [roadmaps, mine, myTier, mySquads] = await Promise.all([
+            listRoadmaps(),
+            listMyApplications(),
+            getMyTier(),
+            listMySquads().catch(() => [] as Squad[]),
+          ]);
           roadmap = roadmaps[0] ?? null;
           applications = mine;
+          tier = myTier;
+          squads = mySquads;
         }
       } catch (e) {
         if (active) setError(e instanceof StoreError ? e.message : "Lowongan gagal dimuat. Muat ulang halaman.");
       }
-      if (active) setLoaded({ user, roadmap, opportunities, samplesOnly, applications });
+      if (active) setLoaded({ user, roadmap, opportunities, samplesOnly, applications, tier, squads });
     })();
     return () => {
       active = false;
@@ -81,7 +101,7 @@ export function ExperienceBoard() {
   }, []);
 
   const ranked = useMemo(
-    () => (loaded ? rankOpportunities(filterOpportunities(loaded.opportunities, filter), loaded.roadmap) : []),
+    () => (loaded ? rankOpportunities(filterOpportunities(loaded.opportunities, filter), loaded.roadmap, loaded.tier) : []),
     [loaded, filter],
   );
   const appliedTo = useMemo(
@@ -103,6 +123,16 @@ export function ExperienceBoard() {
   const onApplied = (application: Application) => {
     setLoaded((l) => (l ? { ...l, applications: [application, ...l.applications] } : l));
     setNotice("Pendaftaran terkirim. Tim TitikNol akan mengeceknya dan mengabarimu lewat kontak yang kamu tulis.");
+  };
+
+  const changeAvailability = async (application: Application, availability: "siap" | "izin", note: string) => {
+    try {
+      await setMyAvailability(application.id, availability, note);
+      const squads = await listMySquads();
+      setLoaded((l) => (l ? { ...l, squads } : l));
+    } catch (e) {
+      throw new Error(e instanceof StoreError ? e.message : "Status izin gagal disimpan. Coba lagi.");
+    }
   };
 
   const cancel = async (application: Application) => {
@@ -152,6 +182,12 @@ export function ExperienceBoard() {
                   <StatusChip status={a.status} />
                 </div>
                 <ApplicationProgress status={a.status} />
+                {(() => {
+                  const squad = a.squadId ? loaded.squads.find((sq) => sq.id === a.squadId) : undefined;
+                  return squad ? (
+                    <SquadPanel squad={squad} onAvailability={(availability, note) => changeAvailability(a, availability, note)} />
+                  ) : null;
+                })()}
                 {a.adminNote && (
                   <p className="mt-3 rounded-xl bg-sky-soft px-3 py-2 text-sm leading-relaxed">
                     <span className="font-emphasis">Catatan tim TitikNol:</span> {a.adminNote}
@@ -178,6 +214,8 @@ export function ExperienceBoard() {
         </section>
       )}
 
+      {loaded && <ProjectLadder tier={loaded.tier} signedIn={!!loaded.user} />}
+
       <section aria-labelledby={`${id}-list`} className="mt-10">
         <h2 id={`${id}-list`} className="sr-only">
           Daftar lowongan
@@ -185,7 +223,7 @@ export function ExperienceBoard() {
         <form
           role="search"
           onSubmit={(e) => e.preventDefault()}
-          className="grid gap-3 rounded-card bg-surface-muted p-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] sm:p-5"
+          className="grid gap-3 rounded-card bg-surface-muted p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]"
         >
           <label className="text-sm font-emphasis">
             Cari posisi
@@ -228,13 +266,28 @@ export function ExperienceBoard() {
               ))}
             </select>
           </label>
+          <label className="text-sm font-emphasis">
+            Tingkat
+            <select
+              className={field}
+              value={filter.level}
+              onChange={(e) => setFilter({ ...filter, level: e.target.value as OpportunityFilter["level"] })}
+            >
+              <option value="semua">Semua tingkat</option>
+              {OPPORTUNITY_LEVELS.map((l) => (
+                <option key={l} value={l}>
+                  {LEVEL_LABEL[l]}
+                </option>
+              ))}
+            </select>
+          </label>
         </form>
 
         {loaded && (
           <div className="mt-4 flex flex-col gap-1 text-sm text-ink-muted">
             <p aria-live="polite">
               <span className="font-heading text-ink">{ranked.length} lowongan</span>
-              {(filter.q || filter.category !== "semua" || filter.place !== "semua") && (
+              {(filter.q || filter.category !== "semua" || filter.place !== "semua" || filter.level !== "semua") && (
                 <button
                   type="button"
                   onClick={() => setFilter(EMPTY_FILTER)}
@@ -286,6 +339,13 @@ export function ExperienceBoard() {
                       <p className="flex items-center justify-between gap-3 rounded-2xl bg-leaf-soft px-4 py-3 text-sm font-emphasis text-leaf-ink">
                         Sudah daftar
                         <span className="font-medium">{APPLICATION_STATUS_LABEL[mine.status]}</span>
+                      </p>
+                    ) : !canTake(o.level, loaded.tier) ? (
+                      <p className="flex gap-2 rounded-2xl bg-surface-muted px-4 py-3 text-sm leading-snug text-ink-muted">
+                        <LockIcon className="mt-0.5 size-4 shrink-0" strokeWidth={2.25} />
+                        <span>
+                          <span className="font-emphasis text-ink">{LEVEL_LABEL[o.level]} masih terkunci.</span> {unlockHint(o.level)}
+                        </span>
                       </p>
                     ) : loaded.samplesOnly ? (
                       <p className="rounded-2xl bg-surface-muted px-4 py-3 text-center text-sm font-emphasis text-ink-muted">

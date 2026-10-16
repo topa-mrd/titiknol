@@ -106,6 +106,15 @@ expectDenied(
   (await supabase.from("opportunities").insert({ org_id: "00000000-0000-4000-8000-000000000000", title: "xxx", category: "desain", kind: "magang", description: "x".repeat(30), stipend: "Rp1", duration: "1 bulan" })).error,
 );
 
+// 2b. Squad dan tangga proyek: squad tidak terbaca publik; lowongan punya kolom tingkat.
+expectDenied("membaca squads", (await supabase.from("squads").select("id").limit(1)).error);
+{
+  const { error } = await supabase.from("opportunities").select("id, level").limit(1);
+  if (error?.code === "42703" || error?.code === "PGRST204") fail("Kolom tingkat lowongan belum ada. Jalankan npm run db:apply.");
+  else if (error) fail(`Lowongan tidak terbaca: ${error.code} ${error.message}`);
+  else pass("Lowongan punya kolom tingkat (tangga proyek)");
+}
+
 // 3. Cerita publik, tapi tanpa user_id dan tanpa hak tulis.
 {
   const { data, error } = await supabase

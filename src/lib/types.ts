@@ -501,6 +501,15 @@ export const OPPORTUNITY_REVIEWS = ["menunggu", "disetujui", "ditolak"] as const
 export const OpportunityReviewSchema = z.enum(OPPORTUNITY_REVIEWS);
 export type OpportunityReview = z.infer<typeof OpportunityReviewSchema>;
 
+/**
+ * Tangga proyek: tingkat risiko/tanggung jawab sebuah lowongan. Talenta baru
+ * hanya bisa mengambil proyek kecil; sedang terbuka setelah satu proyek selesai,
+ * tinggi setelah satu proyek sedang selesai (ditegakkan trigger applications_guard).
+ */
+export const OPPORTUNITY_LEVELS = ["kecil", "sedang", "tinggi"] as const;
+export const OpportunityLevelSchema = z.enum(OPPORTUNITY_LEVELS);
+export type OpportunityLevel = z.infer<typeof OpportunityLevelSchema>;
+
 export const OpportunityInputSchema = z
   .object({
     title: oneLine(3, 120),
@@ -520,6 +529,7 @@ export const OpportunityInputSchema = z
       .nullable()
       .default(null),
     tags: z.array(z.string().trim().toLowerCase().regex(TAG_PATTERN).max(30)).max(8).default([]),
+    level: OpportunityLevelSchema.default("kecil"),
   })
   .refine((o) => o.remote || o.province !== null, {
     message: "Pilih provinsi, atau tandai lowongan ini bisa dikerjakan online.",
@@ -545,6 +555,7 @@ export const OpportunitySchema = z.object({
   slots: z.number().int(),
   deadline: z.string().nullable(),
   tags: z.array(z.string()),
+  level: OpportunityLevelSchema.default("kecil"),
   review: OpportunityReviewSchema,
   adminNote: z.string(),
   closed: z.boolean(),
@@ -607,8 +618,45 @@ export const ApplicationSchema = z.object({
   orgNote: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** Squad (tim kecil) yang diatur admin; null bila belum masuk squad. */
+  squadId: z.string().nullable().default(null),
+  /** Kesediaan anggota: "izin" bila sedang berhalangan (diatur talenta sendiri). */
+  availability: z.enum(["siap", "izin"]).default("siap"),
+  availabilityNote: z.string().default(""),
+  /** Kapan pertama kali diteruskan ke mitra; menentukan apakah mitra boleh melihat lamaran yang ditolak. */
+  forwardedAt: z.string().nullable().default(null),
 });
 export type Application = z.infer<typeof ApplicationSchema>;
+
+/** Squad: 2–4 talenta di satu lowongan, dibentuk admin, dengan link grup bersama. */
+export const MAX_SQUAD_SIZE = 4;
+export const SquadInputSchema = z.object({
+  name: oneLine(2, 60),
+  contactLink: httpsUrl.nullable().default(null),
+  note: paragraph(0, 300).default(""),
+});
+export type SquadInput = z.input<typeof SquadInputSchema>;
+
+export const SquadMemberSchema = z.object({
+  applicationId: z.string().min(1),
+  name: z.string(),
+  status: ApplicationStatusSchema,
+  availability: z.enum(["siap", "izin"]),
+  availabilityNote: z.string(),
+  isMe: z.boolean(),
+});
+export type SquadMember = z.infer<typeof SquadMemberSchema>;
+
+export const SquadSchema = z.object({
+  id: z.string().min(1),
+  opportunityId: z.string().min(1),
+  name: z.string(),
+  contactLink: z.string().nullable(),
+  note: z.string(),
+  createdAt: z.string(),
+  members: z.array(SquadMemberSchema).default([]),
+});
+export type Squad = z.infer<typeof SquadSchema>;
 
 /** artikel = tulisan blog; mentor & komunitas = profil di halaman Komunitas. */
 export const STORY_KINDS = ["artikel", "mentor", "komunitas"] as const;
