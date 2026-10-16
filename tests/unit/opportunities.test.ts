@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_FILTER, SAMPLE_OPPORTUNITIES, filterOpportunities, locationLabel, rankOpportunities } from "@/lib/opportunities";
+import { EMPTY_FILTER, SAMPLE_OPPORTUNITIES, filterOpportunities, isPastDeadline, locationLabel, rankOpportunities, todayWib } from "@/lib/opportunities";
 import { PROVINCES } from "@/lib/regions";
 import {
   ApplicationInputSchema,
@@ -73,6 +73,18 @@ describe("filter lowongan", () => {
     expect(locationLabel({ city: "Kediri", province: "Jawa Timur", remote: false })).toBe("Kediri, Jawa Timur");
     expect(locationLabel({ city: "Kediri", province: "Jawa Timur", remote: true })).toBe("Kediri, Jawa Timur atau online");
     expect(locationLabel({ city: "", province: null, remote: true })).toBe("Online / jarak jauh");
+  });
+});
+
+describe("batas daftar", () => {
+  it("dihitung dengan tanggal WIB; hari terakhir masih boleh mendaftar", () => {
+    // 16 Okt 2026 pukul 20.00 UTC = 17 Okt 03.00 WIB.
+    const now = new Date("2026-10-16T20:00:00Z");
+    expect(todayWib(now)).toBe("2026-10-17");
+    expect(isPastDeadline("2026-10-16", now)).toBe(true);
+    expect(isPastDeadline("2026-10-17", now)).toBe(false);
+    expect(isPastDeadline("2026-12-01", now)).toBe(false);
+    expect(isPastDeadline(null, now)).toBe(false);
   });
 });
 

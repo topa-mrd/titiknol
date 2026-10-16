@@ -140,6 +140,13 @@ export function unlockHint(level: OpportunityLevel): string {
     : "Terbuka setelah kamu menyelesaikan satu proyek kecil.";
 }
 
+/** Tanggal hari ini di WIB (YYYY-MM-DD), pembanding yang sama dengan database. */
+export const todayWib = (now = new Date()) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+
+/** Batas daftar sudah lewat? Hari terakhir masih boleh mendaftar. */
+export const isPastDeadline = (deadline: string | null, now = new Date()) => !!deadline && deadline < todayWib(now);
+
 export type RankedOpportunity = { opportunity: Opportunity; matched: string[] };
 
 /**

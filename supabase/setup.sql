@@ -589,9 +589,13 @@ create table if not exists public.applications (
   admin_note         text not null default '' check (char_length(admin_note) <= 300),
   org_note           text not null default '' check (char_length(org_note) <= 300),
   created_at         timestamptz not null default now(),
-  updated_at         timestamptz not null default now(),
-  unique (opportunity_id, user_id)
+  updated_at         timestamptz not null default now()
 );
+
+-- Satu lamaran aktif per lowongan; yang sudah dibatalkan boleh didaftar ulang.
+alter table public.applications drop constraint if exists applications_opportunity_id_user_id_key;
+create unique index if not exists applications_one_active_idx
+  on public.applications (opportunity_id, user_id) where status <> 'dibatalkan';
 
 create index if not exists applications_user_idx on public.applications (user_id);
 create index if not exists applications_opportunity_idx on public.applications (opportunity_id, status);
@@ -1019,13 +1023,18 @@ declare
   admin boolean := public.is_admin();
   is_org boolean;
   opp_level text;
+  opp_deadline date;
 begin
   if tg_op = 'INSERT' then
-    select o.title, o.org_name, o.level into new.opportunity_title, new.org_name, opp_level
+    select o.title, o.org_name, o.level, o.deadline into new.opportunity_title, new.org_name, opp_level, opp_deadline
       from public.opportunities o
       where o.id = new.opportunity_id and o.review_status = 'disetujui' and not o.closed;
     if not found then
       raise exception 'Lowongan ini sudah ditutup atau belum dibuka.' using errcode = 'P0001';
+    end if;
+    -- Hari terakhir (WIB) masih boleh mendaftar.
+    if opp_deadline is not null and opp_deadline < (now() at time zone 'Asia/Jakarta')::date then
+      raise exception 'Pendaftaran lowongan ini sudah ditutup karena melewati batas daftar.' using errcode = 'P0001';
     end if;
     if public.level_rank(opp_level) > public.talent_tier(new.user_id) then
       if opp_level = 'sedang' then
@@ -1078,7 +1087,8 @@ begin
   end if;
 
   if new.status is distinct from old.status then
-    if admin and new.status in ('dikirim', 'diproses', 'diteruskan', 'ditolak') then
+    if admin and old.status in ('dikirim', 'diproses', 'diteruskan', 'ditolak')
+             and new.status in ('dikirim', 'diproses', 'diteruskan', 'ditolak') then
       null;
     elsif is_org and old.status in ('diteruskan', 'diterima', 'bekerja', 'selesai')
           and new.status in ('diterima', 'bekerja', 'selesai', 'ditolak') then
@@ -1107,8 +1117,8 @@ begin
     end if;
   end if;
 
-  -- Yang ditolak atau membatalkan keluar dari squad.
-  if new.status in ('ditolak', 'dibatalkan') then
+  -- Yang tidak lagi diteruskan (dikembalikan admin, ditolak, membatalkan) keluar dari squad.
+  if new.status in ('dikirim', 'diproses', 'ditolak', 'dibatalkan') then
     new.squad_id := null;
   end if;
   if old.forwarded_at is null and new.status = 'diteruskan' then

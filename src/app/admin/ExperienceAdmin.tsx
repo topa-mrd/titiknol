@@ -238,7 +238,7 @@ function ApplicantCard({ application: a, onUpdated }: { application: Application
   const [note, setNote] = useState(a.adminNote);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const adminCanSet = (ADMIN_APPLICATION_STATUSES as readonly string[]).includes(a.status) || a.status === "dibatalkan";
+  const adminCanSet = (ADMIN_APPLICATION_STATUSES as readonly string[]).includes(a.status);
 
   const save = async (next: ApplicationStatus) => {
     setBusy(true);
@@ -326,7 +326,11 @@ function ApplicantCard({ application: a, onUpdated }: { application: Application
           </button>
         </div>
       ) : (
-        <p className="mt-4 border-t-2 border-line pt-4 text-sm text-ink-muted">Sudah ditangani mitra. Status berikutnya diatur oleh mitra.</p>
+        <p className="mt-4 border-t-2 border-line pt-4 text-sm text-ink-muted">
+          {a.status === "dibatalkan"
+            ? "Dibatalkan oleh talenta. Lamaran ini tidak bisa diteruskan lagi."
+            : "Sudah ditangani mitra. Status berikutnya diatur oleh mitra."}
+        </p>
       )}
       {error && <ErrorBox>{error}</ErrorBox>}
     </li>

@@ -19,6 +19,7 @@ import {
   POSITION_LABEL,
   canTake,
   filterOpportunities,
+  isPastDeadline,
   rankOpportunities,
   unlockHint,
   type OpportunityFilter,
@@ -108,6 +109,11 @@ export function ExperienceBoard() {
     () => new Map((loaded?.applications ?? []).filter((a) => a.status !== "dibatalkan").map((a) => [a.opportunityId, a])),
     [loaded],
   );
+  // Lamaran yang dibatalkan lalu didaftar ulang cukup tampil sekali (yang aktif).
+  const myApplications = useMemo(
+    () => (loaded?.applications ?? []).filter((a) => a.status !== "dibatalkan" || !appliedTo.has(a.opportunityId)),
+    [loaded, appliedTo],
+  );
   const hasSamples = loaded?.opportunities.some((o) => o.sample) ?? false;
   const accepted = (loaded?.applications ?? []).some((a) => a.status !== "dibatalkan" && a.status !== "ditolak");
 
@@ -166,13 +172,13 @@ export function ExperienceBoard() {
         {notice}
       </p>
 
-      {loaded && loaded.applications.length > 0 && (
+      {loaded && myApplications.length > 0 && (
         <section aria-labelledby={`${id}-mine`} className="mt-8">
           <h2 id={`${id}-mine`} className="font-display text-xl font-heading">
             Lamaranku
           </h2>
           <ul className="mt-3 grid gap-3 md:grid-cols-2">
-            {loaded.applications.map((a) => (
+            {myApplications.map((a) => (
               <li key={a.id} className="card p-4 sm:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -339,6 +345,10 @@ export function ExperienceBoard() {
                       <p className="flex items-center justify-between gap-3 rounded-2xl bg-leaf-soft px-4 py-3 text-sm font-emphasis text-leaf-ink">
                         Sudah daftar
                         <span className="font-medium">{APPLICATION_STATUS_LABEL[mine.status]}</span>
+                      </p>
+                    ) : isPastDeadline(o.deadline) ? (
+                      <p className="rounded-2xl bg-surface-muted px-4 py-3 text-center text-sm font-emphasis text-ink-muted">
+                        Pendaftaran sudah ditutup
                       </p>
                     ) : !canTake(o.level, loaded.tier) ? (
                       <p className="flex gap-2 rounded-2xl bg-surface-muted px-4 py-3 text-sm leading-snug text-ink-muted">

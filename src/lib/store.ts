@@ -1,7 +1,7 @@
 import type { AuthError, PostgrestError, User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "./supabase/client";
 import { z } from "zod";
-import { LEVEL_LABEL, SAMPLE_OPPORTUNITIES, canTake, talentTier, unlockHint } from "./opportunities";
+import { LEVEL_LABEL, SAMPLE_OPPORTUNITIES, canTake, isPastDeadline, talentTier, unlockHint } from "./opportunities";
 import { SAMPLE_STORIES, type Story } from "./stories";
 import {
   ADMIN_APPLICATION_STATUSES,
@@ -1069,7 +1069,10 @@ export async function applyToOpportunity(input: ApplicationInput): Promise<Appli
     const user = requireDemoUser();
     const opp = allDemoOpps().find((o) => o.id === v.opportunityId && o.review === "disetujui" && !o.closed);
     if (!opp) throw new StoreError("Lowongan ini sudah ditutup atau belum dibuka.", "invalid");
-    if (demoApps().some((a) => a.userId === user.id && a.opportunityId === v.opportunityId)) {
+    if (isPastDeadline(opp.deadline)) {
+      throw new StoreError("Pendaftaran lowongan ini sudah ditutup karena melewati batas daftar.", "invalid");
+    }
+    if (demoApps().some((a) => a.userId === user.id && a.opportunityId === v.opportunityId && a.status !== "dibatalkan")) {
       throw new StoreError("Kamu sudah mendaftar ke lowongan ini.", "invalid");
     }
     const tier = talentTier(demoApps().filter((a) => a.userId === user.id), allDemoOpps());
@@ -1142,8 +1145,8 @@ async function updateApplication(
       adminNote: patch.admin_note ?? app.adminNote,
       orgNote: patch.org_note ?? app.orgNote,
       updatedAt: nowIso(),
-      // Sama dengan trigger: yang ditolak/membatalkan keluar dari squad; tanggal diteruskan dicatat sekali.
-      squadId: status === "ditolak" || status === "dibatalkan" ? null : app.squadId,
+      // Sama dengan trigger: yang tidak lagi diteruskan keluar dari squad; tanggal diteruskan dicatat sekali.
+      squadId: ["dikirim", "diproses", "ditolak", "dibatalkan"].includes(status) ? null : app.squadId,
       forwardedAt: app.forwardedAt ?? (status === "diteruskan" ? nowIso() : null),
     });
   }
@@ -1440,7 +1443,8 @@ export function updateApplicationByAdmin(id: string, status: ApplicationStatus, 
   return updateApplication(
     id,
     { status, admin_note: adminNote.trim().slice(0, 300) },
-    (a) => status === a.status || (ADMIN_APPLICATION_STATUSES as readonly string[]).includes(status),
+    // Sama dengan trigger: hanya lamaran yang belum ditangani mitra dan tidak dibatalkan talenta.
+    (a) => (ADMIN_APPLICATION_STATUSES as readonly string[]).includes(a.status) && (ADMIN_APPLICATION_STATUSES as readonly string[]).includes(status),
     "memperbarui status pendaftar",
   );
 }

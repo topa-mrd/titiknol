@@ -62,6 +62,14 @@ test.describe("Experience: talenta", () => {
     await again.getByRole("button", { name: `Batalkan lamaran ${target.title}` }).click();
     await expect(again).toContainText("Dibatalkan");
     await expect(applyButton(page, target.title)).toBeVisible();
+
+    // Berubah pikiran: daftar ulang berhasil, dan Lamaranku hanya menampilkan lamaran yang aktif.
+    await applyButton(page, target.title).click();
+    await fillApplication(page);
+    await expect(page.getByRole("status").filter({ hasText: "Pendaftaran terkirim" })).toBeVisible();
+    const active = page.getByRole("region", { name: "Lamaranku" }).getByRole("listitem").filter({ hasText: target.title });
+    await expect(active).toHaveCount(1);
+    await expect(active).toContainText("Terkirim");
   });
 
   test("belum login → Daftar mengarah ke login lalu kembali", async ({ page }) => {

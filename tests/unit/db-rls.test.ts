@@ -358,6 +358,37 @@ describe("RLS experience: mitra, lowongan, lamaran", () => {
     await asUser(TALENTA, () => db.query("update public.applications set status = 'dibatalkan' where id = $1", [app.rows[0].id]));
     const row = await db.query<{ status: string }>("select status from public.applications where id = $1", [app.rows[0].id]);
     expect(row.rows[0].status).toBe("dibatalkan");
+
+    // Admin tidak bisa menghidupkan lagi (apalagi meneruskan) lamaran yang dibatalkan talenta.
+    await expect(
+      asUser(ADMIN, () => db.query("update public.applications set status = 'diteruskan' where id = $1", [app.rows[0].id])),
+    ).rejects.toThrow(STATUS_DENIED);
+
+    // Talenta boleh mendaftar ulang, tapi tetap hanya satu lamaran aktif.
+    const again = await asUser(TALENTA, () => db.query<{ id: string; status: string }>(APPLY, [other.rows[0].id]));
+    expect(again.rows[0].status).toBe("dikirim");
+    await expect(asUser(TALENTA, () => db.query(APPLY, [other.rows[0].id]))).rejects.toThrow(/duplicate key/);
+  });
+
+  it("admin tidak bisa mengubah status lamaran yang sudah ditangani mitra", async () => {
+    expect((await statusNow()).status).toBe("selesai");
+    await expect(setStatus(ADMIN, "diproses")).rejects.toThrow(STATUS_DENIED);
+    await expect(setStatus(ADMIN, "ditolak")).rejects.toThrow(STATUS_DENIED);
+  });
+
+  it("tidak bisa mendaftar setelah batas daftar lewat; hari terakhir masih boleh", async () => {
+    const DATED = `insert into public.opportunities (org_id, title, category, kind, province, city, description, stipend, duration, slots, deadline)
+      values ($1, $2, 'desain', 'proyek', 'Jawa Timur', 'Kediri', 'Rancang ulang menu cetak dan media sosial kedai.', 'Rp400.000', '2 minggu', 2,
+        (now() at time zone 'Asia/Jakarta')::date + $3::int) returning id`;
+    const open = async (title: string, days: number) => {
+      const id = (await asUser(MITRA, () => db.query<{ id: string }>(DATED, [orgId, title, days]))).rows[0].id;
+      await asUser(ADMIN, () => db.query("update public.opportunities set review_status = 'disetujui' where id = $1", [id]));
+      return id;
+    };
+    const lewat = await open("Lowongan kemarin", -1);
+    const hariIni = await open("Lowongan hari ini", 0);
+    await expect(asUser(TALENTA, () => db.query(APPLY, [lewat]))).rejects.toThrow(/melewati batas daftar/);
+    await expect(asUser(TALENTA, () => db.query(APPLY, [hariIni]))).resolves.toBeTruthy();
   });
 });
 
@@ -653,6 +684,14 @@ describe("RLS tangga proyek & squad", () => {
     expect(await asUser(MITRA, () => count("select count(*) as n from public.applications where id = $1", [id]))).toBe(0);
     // forwarded_at tidak bisa diisi klien untuk membuka akses.
     await expect(asUser(ADMIN, () => db.query("update public.applications set forwarded_at = now() where id = $1", [id]))).rejects.toThrow(DENIED);
+  });
+
+  it("admin mengembalikan pendaftar ke diproses → otomatis keluar dari squad", async () => {
+    await setStatus(ADMIN, app[T4], "diproses");
+    const row = await db.query<{ squad_id: string | null }>("select squad_id from public.applications where id = $1", [app[T4]]);
+    expect(row.rows[0].squad_id).toBeNull();
+    expect((await members(T2, app.squad)).rows.map((r) => r.name)).toEqual(["Bayu", "Sari"]);
+    expect((await members(MITRA, app.squad)).rows.map((r) => r.name)).toEqual(["Bayu", "Sari"]);
   });
 });
 
