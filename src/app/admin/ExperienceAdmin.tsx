@@ -262,6 +262,7 @@ function ApplicantCard({ application: a, onUpdated }: { application: Application
             <Sep />
             {a.orgName}
           </p>
+          {a.matchRequestId && <p className="mt-1 text-xs font-heading text-brand-ink">Dicocokkan tim TitikNol</p>}
         </div>
         <StatusChip status={a.status} />
       </div>

@@ -355,6 +355,7 @@ function TalentCard({ talent: t, onUpdated }: { talent: Application; onUpdated: 
         <div className="min-w-0">
           <h3 className="font-display text-lg font-heading">{t.applicantName || "Talenta TitikNol"}</h3>
           <p className="text-sm text-ink-muted">Untuk posisi {t.opportunityTitle}</p>
+          {t.matchRequestId && <p className="mt-1 text-xs font-heading text-brand-ink">Dicocokkan tim TitikNol</p>}
         </div>
         <StatusChip status={t.status} />
       </div>

@@ -1,15 +1,12 @@
--- ════════════════════════════════════════════════════════════════════
 -- TitikNol — setup lengkap (skema + seed katalog)
 -- FILE INI DI-GENERATE oleh `npm run db:setup-sql`. Jangan diedit manual;
 -- ubah supabase/schema.sql atau src/lib/resources.ts lalu generate ulang.
 --
 -- Cara pakai: Supabase → SQL Editor → tempel seluruh isi file → Run.
 -- Aman dijalankan berulang kali.
--- ════════════════════════════════════════════════════════════════════
 
 begin;
 
--- ════════════════════════════════════════════════════════════════════
 -- TitikNol — skema database (Supabase Postgres)
 --
 -- Idempoten: aman dijalankan berulang kali. Jangan jalankan file ini
@@ -21,7 +18,6 @@ begin;
 --     baru tidak selalu memberi grant otomatis ke anon/authenticated).
 --   • Policy memakai (select auth.uid()) agar dievaluasi sekali per query.
 --   • Batas panjang sejalan dengan LIMITS di src/lib/types.ts.
--- ════════════════════════════════════════════════════════════════════
 
 grant usage on schema public to anon, authenticated;
 
@@ -382,14 +378,12 @@ grant select, insert, delete on public.stories to authenticated;
 grant update (author_name, kind, title, body) on public.stories to authenticated;
 
 
--- ════════════════════════════════════════════════════════════════════
 -- EXPERIENCE: mitra (organizations), lowongan (opportunities), lamaran
 -- (applications). Admin menghubungkan talenta dan mitra:
 --   lowongan baru "menunggu" → admin setujui → tampil publik;
 --   lamaran "dikirim" → admin "diproses"/"diteruskan" → baru terlihat mitra
 --   → mitra "diterima" → "bekerja" → "selesai".
 -- Aturan siapa-boleh-apa ditegakkan trigger + RLS, bukan hanya di UI.
--- ════════════════════════════════════════════════════════════════════
 
 create table if not exists public.organizations (
   id            uuid primary key default gen_random_uuid(),
@@ -732,12 +726,10 @@ grant insert (opportunity_id, applicant_name, contact, motivation, portfolio_url
   on public.applications to authenticated;
 grant update (status, admin_note, org_note) on public.applications to authenticated;
 
--- ════════════════════════════════════════════════════════════════════
 -- BLOG & KOMUNITAS (stories, lanjutan 16 Okt 2026)
 -- artikel = tulisan blog; mentor/komunitas = profil di halaman Komunitas
 -- dengan kontak publik. Cerita bisa disimpan sebagai draf (hanya penulis),
 -- terbit langsung (publik), atau diturunkan admin (tersembunyi).
--- ════════════════════════════════════════════════════════════════════
 alter table public.stories drop constraint if exists stories_kind_check;
 alter table public.stories add constraint stories_kind_check check (kind in ('artikel', 'mentor', 'komunitas'));
 
@@ -837,13 +829,11 @@ grant select (id, author_name, kind, title, summary, body, tags, contact, status
 grant select, insert, delete on public.stories to authenticated;
 grant update (author_name, kind, title, summary, body, tags, contact, status) on public.stories to authenticated;
 
--- ════════════════════════════════════════════════════════════════════
 -- TANGGA PROYEK & SQUAD (lanjutan 16 Okt 2026)
 -- Tiap lowongan punya tingkat (kecil/sedang/tinggi). Talenta baru hanya bisa
 -- mendaftar ke proyek kecil; tingkat berikutnya terbuka setelah ada proyek
 -- yang selesai. Admin mengelompokkan talenta yang sudah diteruskan menjadi
 -- squad (maks 4 orang) dengan link grup; anggota bisa menandai dirinya izin.
--- ════════════════════════════════════════════════════════════════════
 alter table public.opportunities add column if not exists level text not null default 'kecil'
   constraint opportunities_level_check check (level in ('kecil', 'sedang', 'tinggi'));
 
@@ -1024,6 +1014,8 @@ declare
   is_org boolean;
   opp_level text;
   opp_deadline date;
+  matched boolean := false;
+  match_note text := '';
 begin
   if tg_op = 'INSERT' then
     select o.title, o.org_name, o.level, o.deadline into new.opportunity_title, new.org_name, opp_level, opp_deadline
@@ -1052,13 +1044,21 @@ begin
     else
       new.profile_summary := '';
     end if;
-    new.status := 'dikirim';
-    new.admin_note := '';
+    -- Tawaran admin yang diterima talenta (lewat accept_match_offer) langsung diteruskan ke mitra.
+    if new.match_request_id is not null then
+      select true, m.admin_note into matched, match_note from public.match_requests m
+        where m.id = new.match_request_id and m.user_id = new.user_id
+          and m.status = 'ditawarkan' and m.offered_opportunity_id = new.opportunity_id;
+      matched := coalesce(matched, false);
+      if not matched then new.match_request_id := null; end if;
+    end if;
+    new.status := case when matched then 'diteruskan' else 'dikirim' end;
+    new.admin_note := case when matched then coalesce(match_note, '') else '' end;
     new.org_note := '';
     new.squad_id := null;
     new.availability := 'siap';
     new.availability_note := '';
-    new.forwarded_at := null;
+    new.forwarded_at := case when matched then now() else null end;
     return new;
   end if;
 
@@ -1074,6 +1074,7 @@ begin
   new.portfolio_url := old.portfolio_url;
   new.cv_url := old.cv_url;
   new.roadmap_id := old.roadmap_id;
+  new.match_request_id := old.match_request_id;
 
   is_org := exists (
     select 1 from public.opportunities o join public.organizations g on g.id = o.org_id
@@ -1198,6 +1199,256 @@ create policy "applications: pihak terkait boleh mengubah status"
       )
     )
   );
+
+-- DICARIKAN (lanjutan 16 Okt 2026)
+-- Talenta meminta tim TitikNol mencarikan proyek sesuai roadmap-nya. Alur:
+-- menunggu → admin menawarkan satu lowongan (ditawarkan) → talenta menerima
+-- (lamaran langsung diteruskan ke mitra) atau menolak (kembali menunggu, dicatat).
+-- Memilih lowongan sendiri tetap bisa seperti biasa.
+
+create table if not exists public.match_requests (
+  id                      uuid primary key default gen_random_uuid(),
+  user_id                 uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  roadmap_id              uuid references public.roadmaps (id) on delete set null,
+  applicant_name          text not null default '' check (char_length(applicant_name) <= 80),
+  contact                 text not null check (char_length(contact) between 5 and 120),
+  place                   text check (place is null or char_length(place) between 2 and 60),
+  note                    text not null default '' check (char_length(note) <= 300),
+  plan_title              text not null default '' check (char_length(plan_title) <= 160),
+  dream                   text not null default '' check (char_length(dream) <= 300),
+  profile_summary         text not null default '' check (char_length(profile_summary) <= 600),
+  status                  text not null default 'menunggu'
+                          check (status in ('menunggu', 'ditawarkan', 'diterima', 'dibatalkan')),
+  offered_opportunity_id  uuid references public.opportunities (id) on delete set null,
+  admin_note              text not null default '' check (char_length(admin_note) <= 300),
+  declined                text[] not null default '{}' check (cardinality(declined) <= 20),
+  application_id          uuid references public.applications (id) on delete set null,
+  created_at              timestamptz not null default now(),
+  updated_at              timestamptz not null default now()
+);
+
+-- Satu permintaan terbuka per talenta.
+create unique index if not exists match_requests_one_open_idx
+  on public.match_requests (user_id) where status in ('menunggu', 'ditawarkan');
+create index if not exists match_requests_status_idx on public.match_requests (status, created_at);
+
+alter table public.applications add column if not exists match_request_id uuid
+  references public.match_requests (id) on delete set null;
+
+create or replace function public.match_requests_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := (select auth.uid());
+  admin boolean := public.is_admin();
+  opp_title text;
+  opp_level text;
+  opp_deadline date;
+  offered_title text;
+begin
+  if tg_op = 'INSERT' then
+    select left(coalesce(r.plan ->> 'title', r.title), 160), left(r.dream, 300), left(r.summary, 600)
+      into new.plan_title, new.dream, new.profile_summary
+      from public.roadmaps r
+      where r.id = new.roadmap_id and r.user_id = new.user_id;
+    if not found then
+      raise exception 'Simpan roadmap dulu supaya tim TitikNol tahu jalan yang kamu pilih.' using errcode = 'P0001';
+    end if;
+    new.status := 'menunggu';
+    new.offered_opportunity_id := null;
+    new.admin_note := '';
+    new.declined := '{}';
+    new.application_id := null;
+    return new;
+  end if;
+
+  -- Isi permintaan tetap; catatan admin hanya diubah admin.
+  new.user_id := old.user_id;
+  new.roadmap_id := old.roadmap_id;
+  new.applicant_name := old.applicant_name;
+  new.contact := old.contact;
+  new.place := old.place;
+  new.note := old.note;
+  new.plan_title := old.plan_title;
+  new.dream := old.dream;
+  new.profile_summary := old.profile_summary;
+  new.declined := old.declined;
+  new.created_at := old.created_at;
+  if not admin then new.admin_note := old.admin_note; end if;
+
+  if old.status in ('diterima', 'dibatalkan') then
+    if new.status is distinct from old.status
+       or new.offered_opportunity_id is distinct from old.offered_opportunity_id
+       or new.application_id is distinct from old.application_id then
+      raise exception 'Permintaan ini sudah selesai.' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  -- Selain admin, mengubah kolom tanpa mengubah status tidak berdampak apa-apa.
+  if new.status = old.status and not admin then
+    new.offered_opportunity_id := old.offered_opportunity_id;
+    new.application_id := old.application_id;
+    return new;
+  end if;
+
+  if new.status = 'diterima' then
+    -- Hanya lewat accept_match_offer: lamaran yang terhubung harus sudah ada.
+    if old.status <> 'ditawarkan' or not exists (
+      select 1 from public.applications a
+      where a.id = new.application_id and a.match_request_id = old.id and a.user_id = old.user_id
+    ) then
+      raise exception 'Perubahan permintaan ini tidak diizinkan.' using errcode = '42501';
+    end if;
+    new.offered_opportunity_id := old.offered_opportunity_id;
+    return new;
+  end if;
+  new.application_id := old.application_id;
+
+  if new.status = 'ditawarkan' then
+    if not admin then
+      raise exception 'Hanya admin yang bisa menawarkan lowongan.' using errcode = '42501';
+    end if;
+    select o.title, o.level, o.deadline into opp_title, opp_level, opp_deadline
+      from public.opportunities o
+      where o.id = new.offered_opportunity_id and o.review_status = 'disetujui' and not o.closed;
+    if not found then
+      raise exception 'Lowongan ini belum disetujui atau sudah ditutup.' using errcode = 'P0001';
+    end if;
+    if opp_deadline is not null and opp_deadline < (now() at time zone 'Asia/Jakarta')::date then
+      raise exception 'Batas daftar lowongan ini sudah lewat.' using errcode = 'P0001';
+    end if;
+    if public.level_rank(opp_level) > public.talent_tier(old.user_id) then
+      raise exception 'Talenta ini belum bisa mengambil proyek tingkat %. Tawarkan proyek yang tingkatnya sudah terbuka.', opp_level
+        using errcode = 'P0001';
+    end if;
+    if exists (
+      select 1 from public.applications a
+      where a.user_id = old.user_id and a.opportunity_id = new.offered_opportunity_id and a.status <> 'dibatalkan'
+    ) then
+      raise exception 'Talenta ini sudah mendaftar ke lowongan itu. Pilih lowongan lain.' using errcode = 'P0001';
+    end if;
+    return new;
+  end if;
+
+  if new.status = 'menunggu' then
+    if new.status is distinct from old.status then
+      if old.user_id = uid then
+        -- Talenta menolak tawaran: dicatat supaya admin mencarikan yang lain.
+        select o.title into offered_title from public.opportunities o where o.id = old.offered_opportunity_id;
+        if offered_title is not null and cardinality(old.declined) < 20 then
+          new.declined := array_append(old.declined, left(offered_title, 120));
+        end if;
+      elsif not admin then
+        raise exception 'Perubahan permintaan ini tidak diizinkan.' using errcode = '42501';
+      end if;
+    end if;
+    new.offered_opportunity_id := null;
+    return new;
+  end if;
+
+  if new.status = 'dibatalkan' then
+    if old.user_id is distinct from uid and not admin then
+      raise exception 'Perubahan permintaan ini tidak diizinkan.' using errcode = '42501';
+    end if;
+    new.offered_opportunity_id := null;
+    return new;
+  end if;
+
+  raise exception 'Perubahan permintaan ini tidak diizinkan.' using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists match_requests_guard on public.match_requests;
+create trigger match_requests_guard
+  before insert or update on public.match_requests
+  for each row execute function public.match_requests_guard();
+
+drop trigger if exists match_requests_set_updated_at on public.match_requests;
+create trigger match_requests_set_updated_at
+  before update on public.match_requests
+  for each row execute function public.set_updated_at();
+
+alter table public.match_requests enable row level security;
+
+drop policy if exists "match_requests: pemilik dan admin membaca" on public.match_requests;
+create policy "match_requests: pemilik dan admin membaca"
+  on public.match_requests for select
+  to authenticated
+  using (user_id = (select auth.uid()) or (select public.is_admin()));
+
+drop policy if exists "match_requests: talenta meminta atas namanya" on public.match_requests;
+create policy "match_requests: talenta meminta atas namanya"
+  on public.match_requests for insert
+  to authenticated
+  with check (user_id = (select auth.uid()));
+
+drop policy if exists "match_requests: pemilik dan admin mengubah" on public.match_requests;
+create policy "match_requests: pemilik dan admin mengubah"
+  on public.match_requests for update
+  to authenticated
+  using (user_id = (select auth.uid()) or (select public.is_admin()))
+  with check (user_id = (select auth.uid()) or (select public.is_admin()));
+
+revoke all on public.match_requests from anon, authenticated;
+grant select on public.match_requests to authenticated;
+grant insert (roadmap_id, applicant_name, contact, place, note) on public.match_requests to authenticated;
+grant update (status, offered_opportunity_id, admin_note) on public.match_requests to authenticated;
+
+-- Talenta menerima tawaran: lamaran dibuat atas namanya dan langsung diteruskan (lihat applications_guard).
+create or replace function public.accept_match_offer(p_request uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  r public.match_requests%rowtype;
+  app_id uuid;
+begin
+  select * into r from public.match_requests m
+    where m.id = p_request and m.user_id = (select auth.uid())
+    for update;
+  if not found or r.status <> 'ditawarkan' or r.offered_opportunity_id is null then
+    raise exception 'Tawaran ini sudah tidak berlaku. Muat ulang halaman.' using errcode = 'P0001';
+  end if;
+  insert into public.applications (opportunity_id, user_id, applicant_name, contact, motivation, roadmap_id, match_request_id)
+  values (
+    r.offered_opportunity_id, r.user_id, r.applicant_name, r.contact,
+    left('Dicocokkan oleh tim TitikNol sesuai roadmap "' || coalesce(nullif(r.plan_title, ''), 'talenta') || '".'
+      || case when r.note <> '' then ' Catatan talenta: ' || r.note else '' end, 600),
+    r.roadmap_id, r.id
+  )
+  returning id into app_id;
+  update public.match_requests set status = 'diterima', application_id = app_id where id = r.id;
+  return app_id;
+end;
+$$;
+
+revoke all on function public.accept_match_offer(uuid) from public, anon;
+grant execute on function public.accept_match_offer(uuid) to authenticated;
+
+-- Admin melihat tingkat tangga talenta yang meminta dicarikan.
+create or replace function public.admin_talent_tier(p_user uuid)
+returns integer
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Hanya admin yang bisa melihat tingkat talenta lain.' using errcode = '42501';
+  end if;
+  return public.talent_tier(p_user);
+end;
+$$;
+
+revoke all on function public.admin_talent_tier(uuid) from public, anon;
+grant execute on function public.admin_talent_tier(uuid) to authenticated;
 
 -- Seed katalog (54 sumber)
 insert into public.resources (id, title, provider, type, url, cost, tags, level, note,

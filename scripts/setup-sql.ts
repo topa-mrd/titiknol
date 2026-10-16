@@ -35,14 +35,12 @@ export function buildSetupSql(schemaSql: string, resources: readonly Resource[])
     ].join(", ")})`;
   });
 
-  return `-- ════════════════════════════════════════════════════════════════════
--- TitikNol — setup lengkap (skema + seed katalog)
+  return `-- TitikNol — setup lengkap (skema + seed katalog)
 -- FILE INI DI-GENERATE oleh \`npm run db:setup-sql\`. Jangan diedit manual;
 -- ubah supabase/schema.sql atau src/lib/resources.ts lalu generate ulang.
 --
 -- Cara pakai: Supabase → SQL Editor → tempel seluruh isi file → Run.
 -- Aman dijalankan berulang kali.
--- ════════════════════════════════════════════════════════════════════
 
 begin;
 

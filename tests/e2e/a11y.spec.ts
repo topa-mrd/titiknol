@@ -74,4 +74,29 @@ test.describe("Aksesibilitas (axe)", () => {
     await main.getByRole("tab", { name: "Blog & komunitas" }).click();
     await audit(page, "/admin blog");
   });
+
+  test("Carikan untukku: form, menunggu, tab admin, tawaran", async ({ page }) => {
+    await createRoadmap(page);
+    const talent = await page.evaluate(() => localStorage.getItem("titiknol:demo:user")!);
+    await page.goto("/experience");
+    const panel = page.getByRole("region", { name: "Biar kami yang carikan" });
+    await panel.getByRole("button", { name: "Carikan untukku" }).click();
+    await audit(page, "form carikan untukku");
+    await panel.getByRole("textbox", { name: "WhatsApp atau email" }).fill("081234567890");
+    await panel.getByRole("button", { name: "Kirim permintaan" }).click();
+    await expect(panel).toContainText("Sedang dicarikan");
+    await audit(page, "permintaan menunggu");
+
+    await page.goto("/admin");
+    await page.getByRole("tab", { name: "Dicarikan" }).click();
+    const offer = page.getByRole("button", { name: /^Tawarkan lowongan ke / });
+    await audit(page, "/admin dicarikan");
+    await offer.click();
+    await expect(page.getByRole("status").filter({ hasText: "Tawaran dikirim" })).toBeVisible();
+
+    await page.evaluate((v) => localStorage.setItem("titiknol:demo:user", v), talent);
+    await page.goto("/experience");
+    await expect(page.getByRole("region", { name: "Ada tawaran untukmu" })).toBeVisible();
+    await audit(page, "tawaran untuk talenta");
+  });
 });

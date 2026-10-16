@@ -115,6 +115,14 @@ expectDenied("membaca squads", (await supabase.from("squads").select("id").limit
   else pass("Lowongan punya kolom tingkat (tangga proyek)");
 }
 
+// 2c. Carikan untukku: permintaan tidak terbaca dan tidak bisa dibuat tanpa login; fungsinya tertutup untuk anon.
+expectDenied("membaca match_requests", (await supabase.from("match_requests").select("id").limit(1)).error);
+expectDenied(
+  "meminta dicarikan tanpa login",
+  (await supabase.from("match_requests").insert({ roadmap_id: "00000000-0000-4000-8000-000000000000", contact: "081234567890" })).error,
+);
+expectDenied("menerima tawaran tanpa login", (await supabase.rpc("accept_match_offer", { p_request: "00000000-0000-4000-8000-000000000000" })).error);
+
 // 3. Cerita publik, tapi tanpa user_id dan tanpa hak tulis.
 {
   const { data, error } = await supabase

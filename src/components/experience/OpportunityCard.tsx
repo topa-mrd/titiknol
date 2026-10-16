@@ -12,6 +12,7 @@ export function OpportunityCard({
   matched = [],
   badge,
   children,
+  headingLevel = 2,
 }: {
   opportunity: Opportunity;
   matched?: string[];
@@ -19,12 +20,15 @@ export function OpportunityCard({
   badge?: ReactNode;
   /** Aksi/isi tambahan di bagian bawah kartu. */
   children?: ReactNode;
+  /** 3 bila kartu berada di dalam bagian yang sudah punya judul h2. */
+  headingLevel?: 2 | 3;
 }) {
+  const Heading = headingLevel === 3 ? "h3" : "h2";
   return (
     <article className="card flex h-full flex-col p-5 sm:p-6">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-xl leading-snug font-heading tracking-display text-balance">{o.title}</h2>
+          <Heading className="font-display text-xl leading-snug font-heading tracking-display text-balance">{o.title}</Heading>
           <p className="mt-1 text-sm font-emphasis text-ink-muted">{o.orgName}</p>
         </div>
         {badge}

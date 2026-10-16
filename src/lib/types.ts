@@ -625,6 +625,8 @@ export const ApplicationSchema = z.object({
   availabilityNote: z.string().default(""),
   /** Kapan pertama kali diteruskan ke mitra; menentukan apakah mitra boleh melihat lamaran yang ditolak. */
   forwardedAt: z.string().nullable().default(null),
+  /** Diisi bila lamaran berasal dari tawaran tim TitikNol ("Carikan untukku"). */
+  matchRequestId: z.string().nullable().default(null),
 });
 export type Application = z.infer<typeof ApplicationSchema>;
 
@@ -657,6 +659,50 @@ export const SquadSchema = z.object({
   members: z.array(SquadMemberSchema).default([]),
 });
 export type Squad = z.infer<typeof SquadSchema>;
+
+/**
+ * "Carikan untukku": talenta meminta tim TitikNol mencarikan proyek sesuai roadmap-nya.
+ * menunggu → ditawarkan (admin memilih satu lowongan) → diterima (lamaran langsung
+ * diteruskan ke mitra) atau kembali menunggu bila talenta menolak. Ditegakkan trigger `match_requests_guard`.
+ */
+export const MATCH_STATUSES = ["menunggu", "ditawarkan", "diterima", "dibatalkan"] as const;
+export const MatchStatusSchema = z.enum(MATCH_STATUSES);
+export type MatchStatus = z.infer<typeof MatchStatusSchema>;
+
+/** Daerah yang diinginkan: provinsi, "online", atau null (di mana saja). */
+export const MatchPlaceSchema = z.union([ProvinceSchema, z.literal("online")]).nullable();
+export type MatchPlace = z.infer<typeof MatchPlaceSchema>;
+
+export const MatchRequestInputSchema = z.object({
+  roadmapId: z.string().min(1),
+  contact: ContactSchema,
+  place: MatchPlaceSchema.default(null),
+  note: paragraph(0, 300).default(""),
+});
+export type MatchRequestInput = z.input<typeof MatchRequestInputSchema>;
+
+export const MatchRequestSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+  roadmapId: z.string().nullable(),
+  applicantName: z.string(),
+  contact: z.string(),
+  place: z.string().nullable(),
+  note: z.string(),
+  /** Salinan roadmap saat meminta: judul plan, mimpi, dan ringkasan. */
+  planTitle: z.string(),
+  dream: z.string(),
+  profileSummary: z.string(),
+  status: MatchStatusSchema,
+  offeredOpportunityId: z.string().nullable(),
+  adminNote: z.string(),
+  /** Judul lowongan yang pernah ditolak talenta. */
+  declined: z.array(z.string()).default([]),
+  applicationId: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type MatchRequest = z.infer<typeof MatchRequestSchema>;
 
 /** artikel = tulisan blog; mentor & komunitas = profil di halaman Komunitas. */
 export const STORY_KINDS = ["artikel", "mentor", "komunitas"] as const;

@@ -3,6 +3,7 @@ import type { Province } from "./regions";
 import type {
   Application,
   ApplicationStatus,
+  MatchStatus,
   Opportunity,
   OpportunityKind,
   OpportunityLevel,
@@ -53,6 +54,16 @@ export const APPLICATION_STATUS_LABEL: Record<ApplicationStatus, string> = {
   ditolak: "Belum lolos",
   dibatalkan: "Dibatalkan",
 };
+
+export const MATCH_STATUS_LABEL: Record<MatchStatus, string> = {
+  menunggu: "Sedang dicarikan",
+  ditawarkan: "Ada tawaran",
+  diterima: "Tawaran diterima",
+  dibatalkan: "Dibatalkan",
+};
+
+/** Label daerah pilihan pada permintaan "Carikan untukku". */
+export const matchPlaceLabel = (place: string | null) => (place === null ? "Di mana saja" : place === "online" ? "Online / jarak jauh" : place);
 
 /** Urutan tahap lamaran untuk penanda kemajuan (ditolak/dibatalkan di luar urutan). */
 export const APPLICATION_FLOW: readonly ApplicationStatus[] = ["dikirim", "diproses", "diteruskan", "diterima", "bekerja", "selesai"];
@@ -155,7 +166,19 @@ export type RankedOpportunity = { opportunity: Opportunity; matched: string[] };
  * roadmap. Tanpa `tier`: kecocokan roadmap saja. Urutan asli dipertahankan untuk nilai sama.
  */
 export function rankOpportunities(list: readonly Opportunity[], roadmap: RoadmapRow | null, tier?: number): RankedOpportunity[] {
-  const text = roadmap ? roadmapKeywords(roadmap) : "";
+  return rankByText(list, roadmap ? roadmapKeywords(roadmap) : "", tier);
+}
+
+/** Sama dengan `rankOpportunities`, untuk admin yang hanya punya salinan teks roadmap talenta ("Carikan untukku"). */
+export function rankOpportunitiesForRequest(
+  list: readonly Opportunity[],
+  request: { planTitle: string; dream: string; profileSummary: string },
+  tier: number,
+): RankedOpportunity[] {
+  return rankByText(list, [request.planTitle, request.dream, request.profileSummary].join(" ").toLowerCase(), tier);
+}
+
+function rankByText(list: readonly Opportunity[], text: string, tier?: number): RankedOpportunity[] {
   return list
     .map((opportunity, order) => {
       const tags = [...new Set([...opportunity.tags, ...CATEGORY_TAGS[opportunity.category]])];

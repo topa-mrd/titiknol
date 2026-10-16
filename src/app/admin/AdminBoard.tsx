@@ -12,6 +12,7 @@ import { Sep } from "@/components/Sep";
 import { buttonClass } from "@/components/ui";
 import { RESOURCE_TYPE_LABEL, REVIEW_LABEL } from "@/lib/labels";
 import { loginHref } from "@/lib/safe-next";
+import { MatchSection } from "./MatchAdmin";
 import { SquadSection } from "./SquadAdmin";
 import { StoryModerationSection } from "./StoryAdmin";
 import {
@@ -54,11 +55,12 @@ const dateFormat = new Intl.DateTimeFormat("id-ID", {
   year: "numeric",
 });
 
-type Section = "lowongan" | "pendaftar" | "squad" | "tulisan" | "katalog";
+type Section = "lowongan" | "pendaftar" | "dicarikan" | "squad" | "tulisan" | "katalog";
 
 const SECTIONS: { value: Section; label: string }[] = [
   { value: "lowongan", label: "Lowongan" },
   { value: "pendaftar", label: "Pendaftar" },
+  { value: "dicarikan", label: "Dicarikan" },
   { value: "squad", label: "Squad" },
   { value: "tulisan", label: "Blog & komunitas" },
   { value: "katalog", label: "Katalog sumber" },
@@ -95,7 +97,8 @@ export function AdminBoard() {
       </h1>
       <p className="mt-3 max-w-prose text-lg leading-relaxed text-ink-muted">
         Verifikasi lowongan dari mitra, hubungkan pendaftar dengan mitranya,
-        jaga Blog dan Komunitas, dan periksa sumber belajar hasil pencarian web.
+        carikan proyek untuk talenta yang meminta, jaga Blog dan Komunitas, dan
+        periksa sumber belajar hasil pencarian web.
       </p>
 
       {gate === "loading" && (
@@ -160,6 +163,7 @@ export function AdminBoard() {
           </div>
           {section === "lowongan" && <OpportunityReviewSection />}
           {section === "pendaftar" && <ApplicationReviewSection />}
+          {section === "dicarikan" && <MatchSection />}
           {section === "squad" && <SquadSection />}
           {section === "tulisan" && <StoryModerationSection />}
           {section === "katalog" &&

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
 import { ApplicationProgress, StatusChip } from "@/components/experience/ApplicationProgress";
 import { ApplyDialog } from "@/components/experience/ApplyDialog";
+import { MatchRequestPanel } from "@/components/experience/MatchRequestPanel";
 import { ProjectLadder } from "@/components/experience/Ladder";
 import { OpportunityCard } from "@/components/experience/OpportunityCard";
 import { SquadPanel } from "@/components/experience/SquadPanel";
@@ -30,6 +31,7 @@ import { loginHref } from "@/lib/safe-next";
 import {
   StoreError,
   cancelApplication,
+  getMyMatchRequest,
   getMyTier,
   getUser,
   listMyApplications,
@@ -39,12 +41,16 @@ import {
   setMyAvailability,
   type AppUser,
 } from "@/lib/store";
-import { OPPORTUNITY_LEVELS, POSITION_CATEGORIES, type Application, type Opportunity, type RoadmapRow, type Squad } from "@/lib/types";
+import { OPPORTUNITY_LEVELS, POSITION_CATEGORIES, type Application, type MatchRequest, type Opportunity, type RoadmapRow, type Squad } from "@/lib/types";
 import { journeyCompleted } from "@/lib/use-journey";
 
 type Loaded = {
   user: AppUser | null;
   roadmap: RoadmapRow | null;
+  /** Semua roadmap talenta (terbaru dulu), untuk "Carikan untukku". */
+  roadmaps: RoadmapRow[];
+  /** Permintaan "Carikan untukku" yang masih terbuka. */
+  match: MatchRequest | null;
   opportunities: Opportunity[];
   samplesOnly: boolean;
   applications: Application[];
@@ -70,6 +76,8 @@ export function ExperienceBoard() {
     (async () => {
       const user = await getUser().catch(() => null);
       let roadmap: RoadmapRow | null = null;
+      let roadmaps: RoadmapRow[] = [];
+      let match: MatchRequest | null = null;
       let applications: Application[] = [];
       let opportunities: Opportunity[] = [];
       let samplesOnly = false;
@@ -80,13 +88,16 @@ export function ExperienceBoard() {
         opportunities = open.items;
         samplesOnly = open.samplesOnly;
         if (user) {
-          const [roadmaps, mine, myTier, mySquads] = await Promise.all([
+          const [myRoadmaps, mine, myTier, mySquads, myMatch] = await Promise.all([
             listRoadmaps(),
             listMyApplications(),
             getMyTier(),
             listMySquads().catch(() => [] as Squad[]),
+            getMyMatchRequest().catch(() => null),
           ]);
-          roadmap = roadmaps[0] ?? null;
+          roadmaps = myRoadmaps;
+          roadmap = myRoadmaps[0] ?? null;
+          match = myMatch;
           applications = mine;
           tier = myTier;
           squads = mySquads;
@@ -94,12 +105,17 @@ export function ExperienceBoard() {
       } catch (e) {
         if (active) setError(e instanceof StoreError ? e.message : "Lowongan gagal dimuat. Muat ulang halaman.");
       }
-      if (active) setLoaded({ user, roadmap, opportunities, samplesOnly, applications, tier, squads });
+      if (active) setLoaded({ user, roadmap, roadmaps, match, opportunities, samplesOnly, applications, tier, squads });
     })();
     return () => {
       active = false;
     };
   }, []);
+
+  // Pintasan dari roadmap (/experience#dicarikan): panelnya baru ada setelah data dimuat.
+  useEffect(() => {
+    if (loaded && window.location.hash === "#dicarikan") document.getElementById("dicarikan")?.scrollIntoView({ block: "start" });
+  }, [loaded]);
 
   const ranked = useMemo(
     () => (loaded ? rankOpportunities(filterOpportunities(loaded.opportunities, filter), loaded.roadmap, loaded.tier) : []),
@@ -172,6 +188,23 @@ export function ExperienceBoard() {
         {notice}
       </p>
 
+      {loaded && !loaded.samplesOnly && (
+        <MatchRequestPanel
+          signedIn={!!loaded.user}
+          roadmaps={loaded.roadmaps.map((r) => ({ id: r.id, title: r.title, planTitle: r.plan.title || r.title }))}
+          request={loaded.match}
+          offered={loaded.opportunities.find((o) => o.id === loaded.match?.offeredOpportunityId) ?? null}
+          onChange={(match) => {
+            setNotice(match?.status === "menunggu" && !loaded.match ? "Permintaan terkirim. Tim TitikNol akan mencarikan proyek yang cocok untukmu." : null);
+            setLoaded((l) => (l ? { ...l, match } : l));
+          }}
+          onAccepted={(application) => {
+            setLoaded((l) => (l ? { ...l, match: null, applications: [application, ...l.applications] } : l));
+            setNotice("Tawaran diterima. Pendaftaranmu langsung diteruskan ke mitra.");
+          }}
+        />
+      )}
+
       {loaded && myApplications.length > 0 && (
         <section aria-labelledby={`${id}-mine`} className="mt-8">
           <h2 id={`${id}-mine`} className="font-display text-xl font-heading">
@@ -187,6 +220,7 @@ export function ExperienceBoard() {
                   </div>
                   <StatusChip status={a.status} />
                 </div>
+                {a.matchRequestId && <p className="mt-2 text-xs font-heading text-brand-ink">Dicarikan tim TitikNol</p>}
                 <ApplicationProgress status={a.status} />
                 {(() => {
                   const squad = a.squadId ? loaded.squads.find((sq) => sq.id === a.squadId) : undefined;

@@ -49,6 +49,7 @@ Dibuat untuk JOINTS UGM 2026. Versi live: https://titiknol-inspireugm.vercel.app
 ### 4. Experience (`/experience`)
 - Lowongan magang dan proyek dari mitra yang sudah diverifikasi admin. Bisa disaring berdasarkan bidang, daerah (38 provinsi atau online), dan tingkat. Lowongan diurutkan sesuai kecocokan dengan roadmap pengguna.
 - **Pengguna memilih sendiri** lalu mendaftar dengan kontak, alasan, tautan portofolio/CV (opsional), dan ringkasan roadmap (opsional).
+- **Carikan untukku:** pengguna yang bingung memilih cukup menekan satu tombol (di Experience atau di halaman roadmap). Tim TitikNol melihat roadmap dan tingkatnya, lalu menawarkan satu lowongan yang cocok. Kalau pengguna menerima, pendaftarannya langsung diteruskan ke mitra. Kalau menolak, tim mencarikan yang lain.
 - **Tangga proyek:**
 
   | Tingkat | Terbuka bila |
@@ -77,9 +78,10 @@ Dibuat untuk JOINTS UGM 2026. Versi live: https://titiknol-inspireugm.vercel.app
 Ada tiga peran: **Talenta** (pengguna), **Mitra** (pemberi lowongan), dan **Admin** (tim TitikNol, penghubung keduanya).
 
 ```
-Talenta ──daftar──▶  Admin  ──teruskan──▶  Mitra
-   ▲                 cek, saring,          terima, kerjakan,
-   └──── squad ───── bentuk squad          tandai selesai
+Talenta ──daftar sendiri──▶  Admin  ──teruskan──▶  Mitra
+        ──"Carikan untukku"─▶ cari & tawarkan      terima, kerjakan,
+   ▲                          bentuk squad          tandai selesai
+   └──── tawaran, squad ──────┘
 ```
 
 ### Alur Talenta
@@ -87,7 +89,7 @@ Talenta ──daftar──▶  Admin  ──teruskan──▶  Mitra
 2. Di `/draft`, lihat Plan A/B/C, revisi lewat chat, lalu pilih satu.
 3. Masuk akun untuk menyimpan roadmap.
 4. Di `/roadmap`, jalankan langkah mingguan, centang tugas, buka sumber belajar, dan hitung biaya. Bila perlu, minta plan lebih hemat.
-5. Di `/experience`, pilih lowongan sesuai tingkat yang terbuka (awalnya proyek kecil), lalu daftar.
+5. Di `/experience`, pilih lowongan sesuai tingkat yang terbuka (awalnya proyek kecil), lalu daftar. Atau tekan **Carikan untukku**: isi kontak, daerah yang diinginkan, dan catatan, lalu tunggu tawaran dari tim TitikNol. Terima tawaran untuk langsung diteruskan ke mitra, atau tolak supaya dicarikan yang lain.
 6. Pantau status di **Lamaranku**. Lamaran bisa dibatalkan selama belum diteruskan.
 7. Setelah diteruskan, admin bisa memasukkanmu ke squad. Buka grup squad, lihat kondisi teman, dan tandai **izin** bila berhalangan.
 8. Setelah mitra menandai proyek **selesai**, tingkat berikutnya terbuka.
@@ -97,7 +99,7 @@ Talenta ──daftar──▶  Admin  ──teruskan──▶  Mitra
 1. Masuk akun, lalu isi data organisasi sekali (nama, jenis, daerah, kontak). Kontak hanya terlihat oleh tim TitikNol.
 2. Buka lowongan. Uang saku dan durasi wajib diisi. Tentukan juga bidang, daerah atau online, kuota, batas daftar, dan **tingkat proyek** (kecil/sedang/tinggi).
 3. Lowongan berstatus **menunggu verifikasi** sampai disetujui admin. Bila isi atau tingkatnya diubah, lowongan kembali menunggu verifikasi.
-4. Pendaftar baru terlihat setelah **diteruskan** admin, lengkap dengan kontak, alasan, portofolio/CV, dan ringkasan roadmap.
+4. Pendaftar baru terlihat setelah **diteruskan** admin, lengkap dengan kontak, alasan, portofolio/CV, dan ringkasan roadmap. Pendaftar yang datang lewat "Carikan untukku" diberi label **Dicocokkan tim TitikNol**.
 5. Kelola talenta dengan mengubah status ke **diterima → bekerja → selesai**, atau **ditolak**. Mitra juga bisa menambahkan catatan untuk talenta.
 6. Pantau **Squad di lowonganmu**: anggota dan status izinnya.
 
@@ -108,6 +110,7 @@ Admin adalah akun yang tercatat di tabel `admins` (lihat `npm run admin:add`). D
 |---|---|
 | **Lowongan** | Memeriksa lowongan mitra, lalu **menyetujui** atau **menolak**. Catatan wajib diisi bila menolak, dan mitra bisa melihatnya. |
 | **Pendaftar** | Menyaring lamaran: **dikirim → diproses → diteruskan** ke mitra, atau **ditolak**. Catatan tim bisa ditambahkan. Setelah diteruskan, status selanjutnya diatur mitra. |
+| **Dicarikan** | Melihat permintaan "Carikan untukku" beserta roadmap, mimpi, daerah, catatan, dan tingkat tangga talenta. Memilih satu lowongan dari daftar yang sudah disaring (hanya tingkat yang terbuka, daerah pilihan didahulukan, lalu kecocokan roadmap), menulis pesan, lalu **menawarkan**. Tawaran bisa diganti atau ditarik. |
 | **Squad** | Membuat squad per lowongan (nama, tautan grup, catatan), memasukkan pendaftar yang sudah diteruskan (maks. 4 orang), memindahkan anggota, atau menghapus squad. |
 | **Blog & komunitas** | Memoderasi tulisan yang terbit: **turunkan** tulisan yang melanggar atau **tayangkan** kembali. Admin tidak bisa mengubah isi tulisan. |
 | **Katalog sumber** | Memeriksa sumber hasil pencarian web (status "belum dicek"), merevisi data seperti nama, harga, dan tautan, lalu **menyetujui** atau **menolak**. Sumber yang ditolak tidak tampil lagi di roadmap. |
@@ -117,7 +120,7 @@ Admin adalah akun yang tercatat di tabel `admins` (lihat `npm run admin:add`). D
 | Status | Diatur oleh | Terlihat mitra? |
 |---|---|---|
 | dikirim, diproses | Admin | Tidak |
-| diteruskan | Admin | Ya, mulai di sini |
+| diteruskan | Admin, atau otomatis saat talenta menerima tawaran "Carikan untukku" | Ya, mulai di sini |
 | diterima, bekerja, selesai | Mitra | Ya |
 | ditolak | Admin atau mitra | Hanya bila pernah diteruskan |
 | dibatalkan | Talenta (sebelum diteruskan) | Tidak |

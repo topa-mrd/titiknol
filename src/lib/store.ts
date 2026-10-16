@@ -14,6 +14,8 @@ import {
   OrganizationInputSchema,
   OrganizationSchema,
   MAX_SQUAD_SIZE,
+  MatchRequestInputSchema,
+  MatchRequestSchema,
   SquadInputSchema,
   SquadMemberSchema,
   SquadSchema,
@@ -33,6 +35,8 @@ import {
   type Application,
   type ApplicationInput,
   type ApplicationStatus,
+  type MatchRequest,
+  type MatchRequestInput,
   type Opportunity,
   type OpportunityInput,
   type OpportunityReview,
@@ -938,7 +942,7 @@ const toOppRow = (o: ReturnType<typeof OpportunityInputSchema.parse>) => ({
 });
 
 const APP_COLUMNS =
-  "id, opportunity_id, user_id, applicant_name, profile_summary, opportunity_title, org_name, contact, motivation, portfolio_url, cv_url, roadmap_id, status, admin_note, org_note, created_at, updated_at, squad_id, availability, availability_note, forwarded_at";
+  "id, opportunity_id, user_id, applicant_name, profile_summary, opportunity_title, org_name, contact, motivation, portfolio_url, cv_url, roadmap_id, status, admin_note, org_note, created_at, updated_at, squad_id, availability, availability_note, forwarded_at, match_request_id";
 
 type AppRow = {
   id: string;
@@ -962,6 +966,7 @@ type AppRow = {
   availability: string | null;
   availability_note: string | null;
   forwarded_at: string | null;
+  match_request_id: string | null;
 };
 
 const fromAppRow = (r: AppRow): Application | null => {
@@ -987,6 +992,7 @@ const fromAppRow = (r: AppRow): Application | null => {
     availability: r.availability ?? "siap",
     availabilityNote: r.availability_note ?? "",
     forwardedAt: r.forwarded_at ?? null,
+    matchRequestId: r.match_request_id ?? null,
   });
   return parsed.success ? parsed.data : null;
 };
@@ -1101,6 +1107,7 @@ export async function applyToOpportunity(input: ApplicationInput): Promise<Appli
       availability: "siap",
       availabilityNote: "",
       forwardedAt: null,
+      matchRequestId: null,
     });
   }
 
@@ -1672,4 +1679,283 @@ export async function setMyAvailability(applicationId: string, availability: "si
   } catch (error) {
     throw error instanceof StoreError ? error : networkError();
   }
+}
+
+// Carikan untukku: tim TitikNol mencarikan proyek sesuai roadmap talenta
+
+const DEMO_MATCHES_KEY = "titiknol:demo:matches";
+const MATCH_COLUMNS =
+  "id, user_id, roadmap_id, applicant_name, contact, place, note, plan_title, dream, profile_summary, status, offered_opportunity_id, admin_note, declined, application_id, created_at, updated_at";
+const OPEN_MATCH = new Set(["menunggu", "ditawarkan"]);
+
+type MatchRow = {
+  id: string;
+  user_id: string;
+  roadmap_id: string | null;
+  applicant_name: string;
+  contact: string;
+  place: string | null;
+  note: string;
+  plan_title: string;
+  dream: string;
+  profile_summary: string;
+  status: string;
+  offered_opportunity_id: string | null;
+  admin_note: string;
+  declined: string[] | null;
+  application_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const fromMatchRow = (r: MatchRow): MatchRequest | null => {
+  const parsed = MatchRequestSchema.safeParse({
+    id: r.id,
+    userId: r.user_id,
+    roadmapId: r.roadmap_id,
+    applicantName: r.applicant_name,
+    contact: r.contact,
+    place: r.place,
+    note: r.note ?? "",
+    planTitle: r.plan_title ?? "",
+    dream: r.dream ?? "",
+    profileSummary: r.profile_summary ?? "",
+    status: r.status,
+    offeredOpportunityId: r.offered_opportunity_id,
+    adminNote: r.admin_note ?? "",
+    declined: r.declined ?? [],
+    applicationId: r.application_id,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  });
+  return parsed.success ? parsed.data : null;
+};
+
+const demoMatches = () => parseList(readJson(DEMO_MATCHES_KEY, []), MatchRequestSchema);
+function saveDemoMatch(next: MatchRequest): MatchRequest {
+  writeJson(DEMO_MATCHES_KEY, [...demoMatches().filter((m) => m.id !== next.id), next]);
+  return next;
+}
+
+/** Pesan trigger diteruskan apa adanya; unik = sudah ada permintaan terbuka. */
+function matchError(error: PostgrestError | null, action: string): StoreError {
+  if (error?.code === "23505") return new StoreError("Kamu sudah punya permintaan yang sedang dicarikan.", "invalid");
+  if (error?.code === "P0001" || error?.code === "42501") return new StoreError(error.message, "invalid");
+  return dbError(error, action);
+}
+
+async function matchQuery<T>(action: string, run: (supabase: NonNullable<ReturnType<typeof getSupabaseBrowserClient>>) => PromiseLike<{ data: T | null; error: PostgrestError | null }>): Promise<T | null> {
+  const { supabase } = await requireSupabaseUser();
+  try {
+    const { data, error } = await run(supabase);
+    if (error) throw matchError(error, action);
+    return data;
+  } catch (error) {
+    throw error instanceof StoreError ? error : networkError();
+  }
+}
+
+const matchNotFound = () => new StoreError("Permintaan tidak ditemukan. Muat ulang halaman.", "not-found");
+
+/** Talenta: permintaan yang masih terbuka (sedang dicarikan atau ada tawaran). */
+export async function getMyMatchRequest(): Promise<MatchRequest | null> {
+  if (storeMode() === "demo") {
+    const user = requireDemoUser();
+    return demoMatches().find((m) => m.userId === user.id && OPEN_MATCH.has(m.status)) ?? null;
+  }
+  const { user } = await requireSupabaseUser();
+  const data = await matchQuery("memuat permintaanmu", (sb) =>
+    sb.from("match_requests").select(MATCH_COLUMNS).eq("user_id", user.id).in("status", [...OPEN_MATCH]).order("created_at", { ascending: false }).limit(1),
+  );
+  return compact(((data ?? []) as MatchRow[]).map(fromMatchRow))[0] ?? null;
+}
+
+/** Talenta: minta dicarikan proyek sesuai roadmap yang dipilih. */
+export async function requestMatch(input: MatchRequestInput): Promise<MatchRequest> {
+  const parsed = MatchRequestInputSchema.safeParse(input);
+  if (!parsed.success) throw invalidInput(parsed.error.issues[0]);
+  const v = parsed.data;
+  if (storeMode() === "demo") {
+    const user = requireDemoUser();
+    const roadmap = demoRows().find((r) => r.id === v.roadmapId && r.user_id === user.id);
+    if (!roadmap) throw new StoreError("Simpan roadmap dulu supaya tim TitikNol tahu jalan yang kamu pilih.", "invalid");
+    if (demoMatches().some((m) => m.userId === user.id && OPEN_MATCH.has(m.status))) {
+      throw new StoreError("Kamu sudah punya permintaan yang sedang dicarikan.", "invalid");
+    }
+    const at = nowIso();
+    return saveDemoMatch({
+      id: newId(),
+      userId: user.id,
+      roadmapId: roadmap.id,
+      applicantName: user.name.slice(0, 80),
+      contact: v.contact,
+      place: v.place,
+      note: v.note,
+      planTitle: (roadmap.plan.title || roadmap.title).slice(0, 160),
+      dream: roadmap.dream.slice(0, 300),
+      profileSummary: roadmap.summary.slice(0, 600),
+      status: "menunggu",
+      offeredOpportunityId: null,
+      adminNote: "",
+      declined: [],
+      applicationId: null,
+      createdAt: at,
+      updatedAt: at,
+    });
+  }
+  const { user } = await requireSupabaseUser();
+  const data = await matchQuery("mengirim permintaan", (sb) =>
+    sb
+      .from("match_requests")
+      .insert({ roadmap_id: v.roadmapId, applicant_name: toAppUser(user).name.slice(0, 80), contact: v.contact, place: v.place, note: v.note })
+      .select(MATCH_COLUMNS)
+      .single(),
+  );
+  const row = data ? fromMatchRow(data as MatchRow) : null;
+  if (!row) throw new StoreError("Permintaan tersimpan tapi datanya tidak terbaca. Muat ulang halaman.", "invalid");
+  return row;
+}
+
+async function updateMatch(id: string, patch: { status?: string; offered_opportunity_id?: string | null; admin_note?: string }, action: string): Promise<MatchRequest> {
+  const data = await matchQuery(action, (sb) => sb.from("match_requests").update(patch).eq("id", id).select(MATCH_COLUMNS).maybeSingle());
+  const row = data ? fromMatchRow(data as MatchRow) : null;
+  if (!row) throw matchNotFound();
+  return row;
+}
+
+/** Mode demo: aturan yang sama dengan trigger `match_requests_guard`. */
+function demoMatchFor(id: string, mine: boolean): MatchRequest {
+  const user = requireDemoUser();
+  const match = demoMatches().find((m) => m.id === id && (!mine || m.userId === user.id));
+  if (!match) throw matchNotFound();
+  if (!OPEN_MATCH.has(match.status)) throw new StoreError("Permintaan ini sudah selesai.", "invalid");
+  return match;
+}
+
+/** Talenta: batalkan permintaan (selama belum menerima tawaran). */
+export async function cancelMatchRequest(id: string): Promise<MatchRequest> {
+  if (storeMode() === "demo") {
+    const match = demoMatchFor(id, true);
+    return saveDemoMatch({ ...match, status: "dibatalkan", offeredOpportunityId: null, updatedAt: nowIso() });
+  }
+  return updateMatch(id, { status: "dibatalkan" }, "membatalkan permintaan");
+}
+
+/** Talenta: tolak tawaran; tim TitikNol mencarikan yang lain. */
+export async function declineMatchOffer(id: string): Promise<MatchRequest> {
+  if (storeMode() === "demo") {
+    const match = demoMatchFor(id, true);
+    if (match.status !== "ditawarkan") throw new StoreError("Tawaran ini sudah tidak berlaku. Muat ulang halaman.", "invalid");
+    const title = allDemoOpps().find((o) => o.id === match.offeredOpportunityId)?.title;
+    const declined = title && match.declined.length < 20 ? [...match.declined, title.slice(0, 120)] : match.declined;
+    return saveDemoMatch({ ...match, status: "menunggu", offeredOpportunityId: null, declined, updatedAt: nowIso() });
+  }
+  return updateMatch(id, { status: "menunggu" }, "menolak tawaran");
+}
+
+/** Talenta: terima tawaran → lamaran dibuat dan langsung diteruskan ke mitra. */
+export async function acceptMatchOffer(id: string): Promise<Application> {
+  if (storeMode() === "demo") {
+    const match = demoMatchFor(id, true);
+    if (match.status !== "ditawarkan" || !match.offeredOpportunityId) {
+      throw new StoreError("Tawaran ini sudah tidak berlaku. Muat ulang halaman.", "invalid");
+    }
+    const opp = allDemoOpps().find((o) => o.id === match.offeredOpportunityId && o.review === "disetujui" && !o.closed);
+    if (!opp || isPastDeadline(opp.deadline)) throw new StoreError("Lowongan ini sudah ditutup. Minta tim TitikNol mencarikan yang lain.", "invalid");
+    if (demoApps().some((a) => a.userId === match.userId && a.opportunityId === opp.id && a.status !== "dibatalkan")) {
+      throw new StoreError("Kamu sudah mendaftar ke lowongan ini.", "invalid");
+    }
+    const at = nowIso();
+    const application = saveDemoApp({
+      id: newId(),
+      opportunityId: opp.id,
+      userId: match.userId,
+      applicantName: match.applicantName,
+      profileSummary: match.profileSummary,
+      opportunityTitle: opp.title,
+      orgName: opp.orgName,
+      contact: match.contact,
+      motivation: `Dicocokkan oleh tim TitikNol sesuai roadmap "${match.planTitle || "talenta"}".${match.note ? ` Catatan talenta: ${match.note}` : ""}`.slice(0, 600),
+      portfolioUrl: null,
+      cvUrl: null,
+      roadmapId: match.roadmapId,
+      status: "diteruskan",
+      adminNote: match.adminNote,
+      orgNote: "",
+      createdAt: at,
+      updatedAt: at,
+      squadId: null,
+      availability: "siap",
+      availabilityNote: "",
+      forwardedAt: at,
+      matchRequestId: match.id,
+    });
+    saveDemoMatch({ ...match, status: "diterima", applicationId: application.id, updatedAt: at });
+    return application;
+  }
+  const appId = await matchQuery<string>("menerima tawaran", (sb) => sb.rpc("accept_match_offer", { p_request: id }));
+  if (!appId) throw matchNotFound();
+  const data = await matchQuery("memuat lamaranmu", (sb) => sb.from("applications").select(APP_COLUMNS).eq("id", appId).maybeSingle());
+  const row = data ? fromAppRow(data as AppRow) : null;
+  if (!row) throw new StoreError("Tawaran diterima, tapi lamarannya belum terbaca. Muat ulang halaman.", "invalid");
+  return row;
+}
+
+export type MatchAdminFilter = "menunggu" | "ditawarkan" | "diterima" | "semua";
+/** Permintaan + tingkat tangga talentanya (menentukan lowongan yang boleh ditawarkan). */
+export type AdminMatch = { request: MatchRequest; tier: number };
+
+/** Admin: daftar permintaan "Carikan untukku". */
+export async function listMatchRequestsForAdmin(filter: MatchAdminFilter): Promise<AdminMatch[]> {
+  if (storeMode() === "demo") {
+    requireDemoUser();
+    return demoMatches()
+      .filter((m) => filter === "semua" || m.status === filter)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((request) => ({ request, tier: talentTier(demoApps().filter((a) => a.userId === request.userId), allDemoOpps()) }));
+  }
+  const data = await matchQuery("memuat permintaan", (sb) => {
+    const query = sb.from("match_requests").select(MATCH_COLUMNS).order("created_at", { ascending: true }).limit(300);
+    return filter === "semua" ? query : query.eq("status", filter);
+  });
+  const requests = compact(((data ?? []) as MatchRow[]).map(fromMatchRow));
+  const { supabase } = await requireSupabaseUser();
+  const tiers = new Map<string, number>();
+  await Promise.all(
+    [...new Set(requests.map((r) => r.userId))].map(async (userId) => {
+      const { data: tier } = await supabase.rpc("admin_talent_tier", { p_user: userId });
+      tiers.set(userId, typeof tier === "number" ? tier : 1);
+    }),
+  );
+  return requests.map((request) => ({ request, tier: tiers.get(request.userId) ?? 1 }));
+}
+
+/** Admin: tawarkan satu lowongan yang cocok (aturan sama dengan trigger). */
+export async function offerMatch(id: string, opportunityId: string, adminNote: string): Promise<MatchRequest> {
+  const note = adminNote.trim().slice(0, 300);
+  if (storeMode() === "demo") {
+    const match = demoMatchFor(id, false);
+    const opp = allDemoOpps().find((o) => o.id === opportunityId && o.review === "disetujui" && !o.closed);
+    if (!opp) throw new StoreError("Lowongan ini belum disetujui atau sudah ditutup.", "invalid");
+    if (isPastDeadline(opp.deadline)) throw new StoreError("Batas daftar lowongan ini sudah lewat.", "invalid");
+    const tier = talentTier(demoApps().filter((a) => a.userId === match.userId), allDemoOpps());
+    if (!canTake(opp.level, tier)) {
+      throw new StoreError(`Talenta ini belum bisa mengambil proyek tingkat ${opp.level}. Tawarkan proyek yang tingkatnya sudah terbuka.`, "invalid");
+    }
+    if (demoApps().some((a) => a.userId === match.userId && a.opportunityId === opp.id && a.status !== "dibatalkan")) {
+      throw new StoreError("Talenta ini sudah mendaftar ke lowongan itu. Pilih lowongan lain.", "invalid");
+    }
+    return saveDemoMatch({ ...match, status: "ditawarkan", offeredOpportunityId: opp.id, adminNote: note, updatedAt: nowIso() });
+  }
+  return updateMatch(id, { status: "ditawarkan", offered_opportunity_id: opportunityId, admin_note: note }, "menawarkan lowongan");
+}
+
+/** Admin: simpan catatan / tarik tawaran (kembali menunggu), atau tutup permintaan. */
+export async function updateMatchByAdmin(id: string, status: "menunggu" | "dibatalkan", adminNote: string): Promise<MatchRequest> {
+  const note = adminNote.trim().slice(0, 300);
+  if (storeMode() === "demo") {
+    const match = demoMatchFor(id, false);
+    return saveDemoMatch({ ...match, status, offeredOpportunityId: null, adminNote: note, updatedAt: nowIso() });
+  }
+  return updateMatch(id, { status, admin_note: note }, "menyimpan permintaan");
 }

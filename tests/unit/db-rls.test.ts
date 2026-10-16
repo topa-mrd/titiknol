@@ -92,6 +92,7 @@ describe("setup.sql", () => {
     expect(tables.rows).toEqual([
       { tablename: "admins", rowsecurity: true },
       { tablename: "applications", rowsecurity: true },
+      { tablename: "match_requests", rowsecurity: true },
       { tablename: "opportunities", rowsecurity: true },
       { tablename: "organizations", rowsecurity: true },
       { tablename: "price_estimates", rowsecurity: true },
@@ -692,6 +693,136 @@ describe("RLS tangga proyek & squad", () => {
     expect(row.rows[0].squad_id).toBeNull();
     expect((await members(T2, app.squad)).rows.map((r) => r.name)).toEqual(["Bayu", "Sari"]);
     expect((await members(MITRA, app.squad)).rows.map((r) => r.name)).toEqual(["Bayu", "Sari"]);
+  });
+});
+
+describe("RLS permintaan dicarikan", () => {
+  const ADMIN = USER_B; // admin (blok "RLS admins")
+  const MITRA = "00000000-0000-4000-8000-0000000000d1";
+  const [RINA, BAYU, ORANG_LAIN] = [2, 3, 4].map((n) => `00000000-0000-4000-8000-0000000000d${n}`);
+  const opp: Record<string, string> = {};
+  const roadmapOf: Record<string, string> = {};
+  let requestId = "";
+  let applicationId = "";
+
+  const REQUEST = `insert into public.match_requests (roadmap_id, applicant_name, contact, place, note)
+    values ($1, $2, '081222333444', 'online', 'Bisa kerja sore hari.') returning *`;
+  type RequestRow = { id: string; status: string; plan_title: string; dream: string; offered_opportunity_id: string | null; admin_note: string; declined: string[]; application_id: string | null };
+  const request = (who: string, roadmapId: string | null, name = "Rina") => asUser(who, () => db.query<RequestRow>(REQUEST, [roadmapId, name]));
+  const update = (who: string, sql: string, params: unknown[] = []) => asUser(who, () => db.query(`update public.match_requests set ${sql} where id = $1`, [requestId, ...params]));
+  const row = async () => (await db.query<RequestRow>("select * from public.match_requests where id = $1", [requestId])).rows[0];
+  const offer = (oppKey: string, note = "") =>
+    update(ADMIN, "status = 'ditawarkan', offered_opportunity_id = $2, admin_note = $3", [opp[oppKey], note]);
+
+  beforeAll(async () => {
+    await db.query("insert into auth.users (id) values ($1), ($2), ($3), ($4) on conflict do nothing", [MITRA, RINA, BAYU, ORANG_LAIN]);
+    await db.query("insert into public.admins (user_id) values ($1) on conflict do nothing", [ADMIN]);
+    for (const who of [RINA, BAYU]) {
+      roadmapOf[who] = (await asUser(who, () => db.query<{ id: string }>(INSERT_ROADMAP, roadmapValues()))).rows[0].id;
+    }
+    const org = await asUser(MITRA, () =>
+      db.query<{ id: string }>(
+        "insert into public.organizations (name, kind, province, city, contact_name, contact) values ('Studio Kreatif Lombok', 'umkm', 'Nusa Tenggara Barat', 'Mataram', 'Pak Wayan', '081234567890') returning id",
+      ),
+    );
+    const OPP = `insert into public.opportunities (org_id, title, category, kind, province, city, remote, description, stipend, duration, slots, level)
+      values ($1, $2, 'desain', 'proyek', null, '', true, 'Proyek desain daring untuk studio kreatif kecil.', 'Rp350.000', '2 minggu', 3, $3) returning id`;
+    for (const [key, title, level, approve] of [
+      ["kecil", "Desain feed Instagram", "kecil", true],
+      ["kecil2", "Desain kemasan keripik", "kecil", true],
+      ["sedang", "Identitas merek lengkap", "sedang", true],
+      ["menunggu", "Lowongan belum dicek", "kecil", false],
+    ] as const) {
+      opp[key] = (await asUser(MITRA, () => db.query<{ id: string }>(OPP, [org.rows[0].id, title, level]))).rows[0].id;
+      if (approve) await asUser(ADMIN, () => db.query("update public.opportunities set review_status = 'disetujui' where id = $1", [opp[key]]));
+    }
+  });
+
+  it("talenta meminta dengan roadmap miliknya; isi roadmap tersalin; satu permintaan terbuka", async () => {
+    await expect(request(RINA, null)).rejects.toThrow(/Simpan roadmap dulu/);
+    await expect(request(RINA, roadmapOf[BAYU])).rejects.toThrow(/Simpan roadmap dulu/);
+    const created = (await request(RINA, roadmapOf[RINA])).rows[0];
+    requestId = created.id;
+    expect(created).toMatchObject({ status: "menunggu", plan_title: plans[0].title, dream: profile.dream, offered_opportunity_id: null });
+    await expect(request(RINA, roadmapOf[RINA])).rejects.toThrow(/duplicate key/);
+    // Status dan tawaran tidak bisa diisi saat membuat permintaan.
+    await expect(
+      asUser(BAYU, () => db.query("insert into public.match_requests (roadmap_id, contact, status) values ($1, '081222333444', 'ditawarkan')", [roadmapOf[BAYU]])),
+    ).rejects.toThrow(DENIED);
+  });
+
+  it("hanya pemilik dan admin yang melihat; mitra dan orang lain tidak; anon ditolak", async () => {
+    const seen = (who: string) => asUser(who, () => count("select count(*) as n from public.match_requests where id = $1", [requestId]));
+    expect(await seen(RINA)).toBe(1);
+    expect(await seen(ADMIN)).toBe(1);
+    expect(await seen(MITRA)).toBe(0);
+    expect(await seen(BAYU)).toBe(0);
+    await expect(asAnon(() => db.query("select * from public.match_requests"))).rejects.toThrow(DENIED);
+    const hijack = await asUser(BAYU, () => db.query("update public.match_requests set status = 'dibatalkan' where id = $1", [requestId]));
+    expect(hijack.affectedRows).toBe(0);
+  });
+
+  it("hanya admin yang menawarkan, dan hanya lowongan yang sah untuk tingkat talenta", async () => {
+    await expect(update(RINA, "status = 'ditawarkan', offered_opportunity_id = $2", [opp.kecil])).rejects.toThrow(/Hanya admin/);
+    await expect(offer("menunggu")).rejects.toThrow(/belum disetujui atau sudah ditutup/);
+    await expect(offer("sedang")).rejects.toThrow(/belum bisa mengambil proyek tingkat sedang/);
+    await offer("kecil", "Cocok dengan roadmap desainmu.");
+    expect(await row()).toMatchObject({ status: "ditawarkan", offered_opportunity_id: opp.kecil, admin_note: "Cocok dengan roadmap desainmu." });
+    // Talenta tidak bisa mengubah catatan admin.
+    await update(RINA, "admin_note = 'diubah talenta'");
+    expect((await row()).admin_note).toBe("Cocok dengan roadmap desainmu.");
+    expect(await asUser(ADMIN, () => db.query<{ t: number }>("select public.admin_talent_tier($1) as t", [RINA]))).toMatchObject({ rows: [{ t: 1 }] });
+    await expect(asUser(RINA, () => db.query("select public.admin_talent_tier($1)", [BAYU]))).rejects.toThrow(/Hanya admin/);
+  });
+
+  it("menolak tawaran: kembali menunggu dan judulnya dicatat; admin menawarkan yang lain", async () => {
+    await update(RINA, "status = 'menunggu'");
+    expect(await row()).toMatchObject({ status: "menunggu", offered_opportunity_id: null, declined: ["Desain feed Instagram"] });
+    await offer("kecil2");
+    expect((await row()).offered_opportunity_id).toBe(opp.kecil2);
+  });
+
+  it("talenta tidak bisa memalsukan lamaran 'dicocokkan' atau menandai diterima sendiri", async () => {
+    await expect(
+      asUser(RINA, () =>
+        db.query(
+          "insert into public.applications (opportunity_id, contact, motivation, match_request_id) values ($1, '081222333444', 'Saya ingin langsung diteruskan tanpa dicek.', $2)",
+          [opp.kecil2, requestId],
+        ),
+      ),
+    ).rejects.toThrow(DENIED);
+    await expect(update(RINA, "status = 'diterima'")).rejects.toThrow(/tidak diizinkan/);
+  });
+
+  it("menerima tawaran: lamaran langsung diteruskan, terlihat mitra, permintaan selesai", async () => {
+    await expect(asUser(BAYU, () => db.query("select public.accept_match_offer($1)", [requestId]))).rejects.toThrow(/sudah tidak berlaku/);
+    const accepted = await asUser(RINA, () => db.query<{ id: string }>("select public.accept_match_offer($1) as id", [requestId]));
+    applicationId = accepted.rows[0].id;
+    const app = (
+      await db.query<{ status: string; forwarded_at: string | null; match_request_id: string; admin_note: string; motivation: string; user_id: string }>(
+        "select * from public.applications where id = $1",
+        [applicationId],
+      )
+    ).rows[0];
+    expect(app).toMatchObject({ status: "diteruskan", match_request_id: requestId, user_id: RINA });
+    expect(app.forwarded_at).not.toBeNull();
+    expect(app.motivation).toMatch(/Dicocokkan oleh tim TitikNol/);
+    expect(await asUser(MITRA, () => count("select count(*) as n from public.applications where id = $1", [applicationId]))).toBe(1);
+    expect(await row()).toMatchObject({ status: "diterima", application_id: applicationId });
+
+    await expect(asUser(RINA, () => db.query("select public.accept_match_offer($1)", [requestId]))).rejects.toThrow(/sudah tidak berlaku/);
+    await expect(update(RINA, "status = 'dibatalkan'")).rejects.toThrow(/sudah selesai/);
+    // Lamaran hasil pencocokan tidak bisa dibatalkan sendiri karena sudah diteruskan.
+    await expect(asUser(RINA, () => db.query("update public.applications set status = 'dibatalkan' where id = $1", [applicationId]))).rejects.toThrow(STATUS_DENIED);
+  });
+
+  it("setelah selesai, talenta boleh meminta lagi; permintaan bisa dibatalkan", async () => {
+    requestId = (await request(RINA, roadmapOf[RINA])).rows[0].id;
+    // Lowongan yang sudah ia ikuti tidak bisa ditawarkan lagi.
+    await expect(offer("kecil2")).rejects.toThrow(/sudah mendaftar ke lowongan itu/);
+    await update(RINA, "status = 'dibatalkan'");
+    expect((await row()).status).toBe("dibatalkan");
+    await expect(offer("kecil")).rejects.toThrow(/sudah selesai/);
   });
 });
 

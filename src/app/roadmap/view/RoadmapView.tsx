@@ -297,6 +297,19 @@ function RoadmapJourney({ roadmap }: { roadmap: RoadmapRow }) {
         </section>
       )}
 
+      <section aria-labelledby="carikan-title" className="mt-8 rounded-card border-2 border-b-4 border-line bg-surface p-5 sm:p-6">
+        <h2 id="carikan-title" className="font-display text-lg font-heading tracking-display">
+          Mau langsung praktik di proyek nyata?
+        </h2>
+        <p className="mt-1 max-w-prose leading-relaxed text-ink-muted">
+          Tim TitikNol bisa mencarikan proyek yang cocok dengan roadmap ini dan tingkatmu, lalu menawarkannya ke kamu.
+        </p>
+        <Link href="/experience#dicarikan" className={`${buttonClass("secondary")} mt-4`}>
+          Carikan proyek untukku
+          <ArrowRightIcon className="size-4" />
+        </Link>
+      </section>
+
       <div className="mt-10 flex flex-wrap justify-between gap-3 border-t border-line pt-6">
         <Link href="/roadmap" className={buttonClass("ghost")}>
           Semua roadmap saya
