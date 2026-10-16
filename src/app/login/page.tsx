@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { LoginForm } from "./LoginForm";
@@ -16,6 +17,17 @@ export default function LoginPage() {
         <Suspense fallback={<div aria-hidden="true" className="mx-auto h-96 w-full max-w-md animate-pulse rounded-card bg-line" />}>
           <LoginForm />
         </Suspense>
+        <p className="mx-auto mt-6 max-w-md text-center text-sm leading-relaxed text-ink-muted">
+          Dengan masuk, kamu menyetujui{" "}
+          <Link href="/syarat" className="font-emphasis text-link underline decoration-link/40 underline-offset-4">
+            Syarat Layanan
+          </Link>{" "}
+          dan{" "}
+          <Link href="/privasi" className="font-emphasis text-link underline decoration-link/40 underline-offset-4">
+            Kebijakan Privasi
+          </Link>{" "}
+          TitikNol.
+        </p>
       </main>
     </div>
   );

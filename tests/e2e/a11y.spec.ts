@@ -25,7 +25,7 @@ test.use({ reducedMotion: "reduce" });
 
 test.describe("Aksesibilitas (axe)", () => {
   test("halaman publik", async ({ page }) => {
-    for (const path of ["/", "/start", "/login", "/blog", "/komunitas", "/komunitas?tab=komunitas", "/experience", "/mitra", "/share", "/admin", "/halaman-yang-tidak-ada"]) {
+    for (const path of ["/", "/start", "/login", "/blog", "/komunitas", "/komunitas?tab=komunitas", "/experience", "/mitra", "/share", "/admin", "/syarat", "/privasi", "/halaman-yang-tidak-ada"]) {
       await page.goto(path);
       await audit(page, path);
     }

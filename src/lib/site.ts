@@ -3,6 +3,8 @@ export const SITE = {
   tagline: "Tell me your dream. We will help you.",
   description:
     "Ceritakan mimpimu, TitikNol bantu menyusun langkah nyata: rencana, roadmap mingguan, pengalaman proyek, sampai berbagi cerita.",
+  /** Kontak publik untuk pertanyaan, permintaan hapus data, dan laporan konten. */
+  contactEmail: "musthafarafii.d@gmail.com",
 } as const;
 
 /** Nama tahap sengaja tetap dalam bahasa Inggris. */

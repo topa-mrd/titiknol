@@ -241,9 +241,28 @@ export default function Home() {
       </main>
 
       <footer className="mx-auto w-full max-w-6xl px-4 sm:px-8">
-        <p className="border-t-2 border-line py-6 text-sm font-medium text-ink-muted">
+        <div className="flex flex-col gap-3 border-t-2 border-line py-6 text-sm font-medium text-ink-muted sm:flex-row sm:items-center sm:justify-between">
           <span className="font-heading text-ink">{SITE.name}</span>
-        </p>
+          <nav aria-label="Informasi">
+            <ul className="flex flex-wrap gap-x-5 gap-y-1">
+              <li>
+                <Link href="/syarat" className="inline-flex min-h-9 items-center hover:text-ink hover:underline">
+                  Syarat Layanan
+                </Link>
+              </li>
+              <li>
+                <Link href="/privasi" className="inline-flex min-h-9 items-center hover:text-ink hover:underline">
+                  Kebijakan Privasi
+                </Link>
+              </li>
+              <li>
+                <a href={`mailto:${SITE.contactEmail}`} className="inline-flex min-h-9 items-center hover:text-ink hover:underline">
+                  Kontak
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
       </footer>
     </div>
   );
