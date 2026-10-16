@@ -16,6 +16,7 @@ import {
   VISIBLE_TO_ORG,
   AdminResourceSchema,
   CatalogLinkSchema,
+  EMPTY_COSTS,
   EMPTY_PROGRESS,
   ProgressSchema,
   ProjectInterestRowSchema,
@@ -320,7 +321,7 @@ export async function createRoadmap(input: NewRoadmap): Promise<RoadmapRow> {
       id: crypto.randomUUID(),
       user_id: user.id,
       progress: EMPTY_PROGRESS,
-      costs: { items: {} },
+      costs: EMPTY_COSTS,
       created_at: now,
       updated_at: now,
     });

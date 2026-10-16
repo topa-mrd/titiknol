@@ -31,7 +31,7 @@ export function BottomNav() {
     <nav
       aria-label="Navigasi utama"
       data-tabbar=""
-      className="fixed inset-x-0 bottom-0 z-30 border-t-2 border-line bg-canvas/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 transform-gpu border-t-2 border-line bg-canvas pb-[env(safe-area-inset-bottom)] [contain:layout_paint] md:hidden"
     >
       <ul className="mx-auto grid h-17 max-w-md grid-cols-5 px-1.5">
         {TABS.map(({ href, label, icon: Icon, lang }) => {

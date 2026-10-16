@@ -154,7 +154,7 @@ function Workspace({ initial, onBuild }: { initial: Ready; onBuild: (session: Re
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur lg:static lg:mt-8 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+      <div className="fixed inset-x-0 bottom-0 z-20 transform-gpu border-t border-line bg-canvas px-4 py-3 lg:static lg:mt-8 lg:transform-none lg:border-0 lg:bg-transparent lg:p-0">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <p
             id="build-hint"

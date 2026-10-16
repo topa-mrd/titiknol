@@ -96,6 +96,8 @@ export type Prompt = {
   /** Lampiran audio (base64) untuk transkripsi. */
   audio?: { data: string; mime: "audio/wav" };
   temperature?: number;
+  /** Jumlah hasil pencarian web (OpenRouter/Exa); default 5. */
+  searchResults?: number;
 };
 export type CallOptions = { signal: AbortSignal; fetch: typeof fetch; siteUrl?: string };
 
@@ -271,7 +273,7 @@ export async function callOpenRouterWithSearch(
         { role: "system", content: prompt.system },
         { role: "user", content: prompt.user },
       ],
-      plugins: [{ id: "web", engine: "exa", max_results: 5 }],
+      plugins: [{ id: "web", engine: "exa", max_results: prompt.searchResults ?? 5 }],
       temperature: 0.2,
     }),
   });
@@ -279,6 +281,8 @@ export async function callOpenRouterWithSearch(
 
   const json = (await res.json()) as {
     choices?: {
+      finish_reason?: string | null;
+      native_finish_reason?: string | null;
       message?: {
         content?: string | null;
         annotations?: { type?: string; url_citation?: { url?: string; title?: string } }[];
@@ -290,7 +294,12 @@ export async function callOpenRouterWithSearch(
     const status = typeof json.error.code === "number" ? json.error.code : 502;
     throw new ProviderError(classifyHttpError(status, json.error.message ?? ""), status, "openrouter error");
   }
-  const message = json.choices?.[0]?.message;
+  const choice = json.choices?.[0];
+  // Gemini via OpenRouter kadang berhenti dengan galat (mis. MALFORMED_FUNCTION_CALL) tanpa teks: coba lagi.
+  if (choice?.finish_reason === "error" || (!choice?.message?.content?.trim() && choice?.native_finish_reason)) {
+    throw new ProviderError("next-model", 200, `openrouter berhenti tanpa teks (${choice?.native_finish_reason ?? choice?.finish_reason})`);
+  }
+  const message = choice?.message;
   const sources = (message?.annotations ?? []).flatMap((a) =>
     a.type === "url_citation" && a.url_citation?.url && /^https:\/\//.test(a.url_citation.url)
       ? [{ uri: a.url_citation.url, title: a.url_citation.title ?? "" }]

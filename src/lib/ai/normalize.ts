@@ -9,6 +9,10 @@ import {
   type CostLevel,
   type ResourceType,
   type StoryKind,
+  EXTRA_CATEGORIES,
+  EXTRA_UNITS,
+  type ExtraCategory,
+  type ExtraUnit,
 } from "../types";
 import { cleanTags } from "../stories";
 
@@ -340,4 +344,90 @@ export function normalizeStoryDraft(raw: unknown, kind: StoryKind): unknown {
 export function normalizeTranscript(raw: unknown): unknown {
   const d = typeof raw === "string" ? { text: raw } : unwrap(camelizeKeys(raw), "text");
   return { text: str(d.text ?? d.transcript ?? d.transkrip, INPUT_LIMIT) ?? "" };
+}
+
+// ───────────────────────── Riset biaya besar ─────────────────────────
+
+export type CostProposal = {
+  label: string;
+  category: ExtraCategory;
+  currency: string;
+  min: number;
+  max: number;
+  unit: ExtraUnit;
+  qty: number;
+  note: string;
+  site: string;
+};
+
+const UNIT_ALIASES: [RegExp, ExtraUnit][] = [
+  [/tahun|year|annual|annum/i, "per tahun"],
+  [/semester|term/i, "per semester"],
+  [/bulan|month/i, "per bulan"],
+];
+
+const CATEGORY_ALIASES: [RegExp, ExtraCategory][] = [
+  [/kuliah|pendidikan|tuition|ukt|spp|education|sekolah/i, "pendidikan"],
+  [/hidup|living|kos|sewa|makan|akomodasi/i, "hidup"],
+  [/perjalanan|tiket|travel|pesawat|flight/i, "perjalanan"],
+  [/dokumen|visa|paspor|asuransi|insurance|legalisasi/i, "dokumen"],
+  [/tes|test|ujian|ielts|toefl/i, "tes"],
+  [/perangkat|laptop|device|alat/i, "perangkat"],
+];
+
+const num = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const n = Number(value.replace(/[^0-9.,-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+};
+
+/** Domain polos dari "https://www.tudelft.nl/x" atau "tudelft.nl". */
+export const bareSite = (value: unknown) =>
+  typeof value === "string"
+    ? value
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .split(/[/?#\s]/)[0]
+    : "";
+
+/** Usulan biaya dari jawaban model; baris yang tidak lengkap dibuang (tidak pernah melempar). */
+export function normalizeCostProposals(raw: unknown): CostProposal[] | null {
+  const root = camelizeKeys(raw);
+  const list = Array.isArray(root) ? root : isObj(root) ? (root.items ?? root.biaya ?? root.costs) : null;
+  if (!Array.isArray(list)) return null;
+  const out: CostProposal[] = [];
+  for (const entry of list.slice(0, 8)) {
+    if (!isObj(entry)) continue;
+    const label = str(entry.label ?? entry.nama ?? entry.name, 90);
+    let min = num(entry.min ?? entry.minimum);
+    let max = num(entry.max ?? entry.maksimum ?? entry.min);
+    const site = bareSite(entry.situs ?? entry.site ?? entry.sumber ?? entry.source);
+    if (!label || min === null || max === null || !site.includes(".")) continue;
+    if (max < min) [min, max] = [max, min];
+    if (min < 0) continue;
+    const unitText = String(entry.satuan ?? entry.unit ?? "");
+    const catText = String(entry.kategori ?? entry.category ?? "");
+    const qty = Math.round(num(entry.jumlah ?? entry.qty ?? 1) ?? 1);
+    out.push({
+      label,
+      category: (EXTRA_CATEGORIES as readonly string[]).includes(catText)
+        ? (catText as ExtraCategory)
+        : (CATEGORY_ALIASES.find(([re]) => re.test(`${catText} ${label}`))?.[1] ?? "lainnya"),
+      currency: String(entry.mataUang ?? entry.currency ?? "IDR").trim().toUpperCase().slice(0, 3),
+      min,
+      max,
+      unit: (EXTRA_UNITS as readonly string[]).includes(unitText)
+        ? (unitText as ExtraUnit)
+        : (UNIT_ALIASES.find(([re]) => re.test(unitText))?.[1] ?? "sekali"),
+      qty: Math.min(120, Math.max(1, qty)),
+      note: str(entry.catatan ?? entry.note ?? entry.keterangan, 150) ?? "",
+      site,
+    });
+  }
+  return out;
 }

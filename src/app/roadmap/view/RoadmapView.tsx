@@ -258,7 +258,20 @@ function RoadmapJourney({ roadmap }: { roadmap: RoadmapRow }) {
       </div>
 
       <div className="mt-10">
-        <CostCalculator steps={steps} costs={costs} onChange={changeCosts} saveLabel={costLabel} />
+        <CostCalculator
+          steps={steps}
+          costs={costs}
+          onChange={changeCosts}
+          saveLabel={costLabel}
+          research={{
+            title: roadmap.title,
+            dream: roadmap.dream,
+            location: roadmap.profile.location,
+            constraints: roadmap.profile.constraints,
+            plan: { title: roadmap.plan.title, approach: roadmap.plan.approach, duration: roadmap.plan.duration },
+            steps: roadmap.steps.map((s) => s.title),
+          }}
+        />
       </div>
 
       {summary.complete && (

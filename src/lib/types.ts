@@ -320,11 +320,63 @@ export const CostItemSchema = z.object({
 });
 export type CostItem = z.infer<typeof CostItemSchema>;
 
+/**
+ * Biaya besar di luar sumber belajar (kuliah, biaya hidup, visa, tiket, perangkat):
+ * hasil pencarian web AI. Setiap baris WAJIB punya sumber dari hasil pencarian
+ * (URL dari metadata pencarian, bukan teks AI) dan selalu ditampilkan sebagai perkiraan AI.
+ */
+export const EXTRA_UNITS = ["sekali", "per bulan", "per semester", "per tahun"] as const;
+export type ExtraUnit = (typeof EXTRA_UNITS)[number];
+export const EXTRA_CATEGORIES = ["pendidikan", "hidup", "perjalanan", "dokumen", "tes", "perangkat", "lainnya"] as const;
+export type ExtraCategory = (typeof EXTRA_CATEGORIES)[number];
+/** Batas per satuan (rupiah): biaya kuliah luar negeri setahun bisa ratusan juta. */
+export const MAX_EXTRA_IDR = 2_000_000_000;
+
+export const CostExtraSchema = z
+  .object({
+    id: z.string().max(48).regex(SLUG_PATTERN),
+    label: z.string().trim().min(2).max(90),
+    category: z.enum(EXTRA_CATEGORIES),
+    min: z.number().int().min(0).max(MAX_EXTRA_IDR),
+    max: z.number().int().min(0).max(MAX_EXTRA_IDR),
+    unit: z.enum(EXTRA_UNITS),
+    qty: z.number().int().min(1).max(120),
+    included: z.boolean(),
+    /** Koreksi harga satuan dari pengguna; null = pakai perkiraan. */
+    amount: z.number().int().min(0).max(MAX_EXTRA_IDR).nullable(),
+    note: z.string().trim().max(200).default(""),
+    sourceUrl: z.url({ protocol: /^https$/ }),
+    sourceTitle: z.string().trim().max(120).default(""),
+    checkedAt: z.iso.date(),
+  })
+  .refine((e) => e.max >= e.min, { message: "Harga maksimum lebih kecil dari minimum" });
+export type CostExtra = z.infer<typeof CostExtraSchema>;
+
 export const RoadmapCostsSchema = z.object({
   items: z.record(z.string().max(64).regex(SLUG_PATTERN), CostItemSchema),
+  extras: z.array(CostExtraSchema).max(10).default([]),
+  /** belum = belum dicari; selesai = ada hasil; kosong = sudah dicari, tidak ada biaya besar yang relevan/bersumber. */
+  extrasStatus: z.enum(["belum", "selesai", "kosong"]).default("belum"),
 });
 export type RoadmapCosts = z.infer<typeof RoadmapCostsSchema>;
-export const EMPTY_COSTS: RoadmapCosts = { items: {} };
+export const EMPTY_COSTS: RoadmapCosts = { items: {}, extras: [], extrasStatus: "belum" };
+
+/** Permintaan riset biaya besar untuk satu roadmap. */
+export const CostResearchRequestSchema = z.object({
+  title: z.string().trim().min(1).max(LIMITS.short * 2),
+  dream: z.string().trim().min(1).max(LIMITS.dream),
+  location: z.string().trim().max(LIMITS.short).nullable(),
+  constraints: z.array(z.string().trim().max(LIMITS.item)).max(LIMITS.list),
+  plan: z.object({
+    title: z.string().trim().max(LIMITS.short),
+    approach: z.string().trim().max(LIMITS.text * 2),
+    duration: z.string().trim().max(60),
+  }),
+  steps: z.array(z.string().trim().max(LIMITS.short * 2)).min(1).max(LIMITS.steps.max),
+  /** Judul sumber berbayar yang sudah dihitung kalkulator (agar tidak dihitung dua kali). */
+  existing: z.array(z.string().trim().max(200)).max(40),
+});
+export type CostResearchRequest = z.infer<typeof CostResearchRequestSchema>;
 
 // ───────────────────────── Baris database ─────────────────────────
 // Dipakai lib/store.ts untuk memvalidasi data yang dibaca dari Supabase
@@ -342,7 +394,7 @@ export const RoadmapRowSchema = z.object({
   plan: PlanSchema,
   steps: ResolvedRoadmapSchema.shape.steps,
   progress: ProgressSchema,
-  costs: RoadmapCostsSchema.default({ items: {} }),
+  costs: RoadmapCostsSchema.default(EMPTY_COSTS),
   created_at: timestamp,
   updated_at: timestamp,
 });

@@ -237,7 +237,7 @@ export function isPublicHttps(url: string): boolean {
 }
 
 /** Ikuti redirect hasil pencarian satu per satu sampai URL akhir dan pastikan halaman bisa dibuka. */
-async function verify(uri: string, domain: string, deps: Pick<SearchDeps, "fetch">, signal: AbortSignal): Promise<string | null> {
+export async function verify(uri: string, domain: string, deps: Pick<SearchDeps, "fetch">, signal: AbortSignal): Promise<string | null> {
   let current = uri;
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {

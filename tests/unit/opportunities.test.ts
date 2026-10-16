@@ -22,7 +22,7 @@ const row = (over: Partial<RoadmapRow> = {}): RoadmapRow =>
     plan: { title: "Belajar desain UI/UX" },
     steps: roadmap.steps,
     progress: { doneSteps: [], doneTodos: [] },
-    costs: { items: {} },
+    costs: { items: {}, extras: [], extrasStatus: "belum" },
     created_at: "2026-10-16T00:00:00Z",
     updated_at: "2026-10-16T00:00:00Z",
     ...over,

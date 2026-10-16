@@ -11,7 +11,7 @@ import { buttonClass } from "@/components/ui";
 import { SITE, STAGES } from "@/lib/site";
 
 const STAGE_HINTS: Record<(typeof STAGES)[number], string> = {
-  "Tell me your dream": "Ceritakan mimpi dan kondisimu, boleh lewat suara.",
+  "Tell me your dream": "Kami dengarkan semua mimpimu. Makin banyak kamu bercerita, makin tepat kami membantumu.",
   Drafting: "Tiga pilihan rencana yang bisa kamu revisi bareng AI.",
   Roadmap: "Langkah mingguan dengan sumber belajar dari katalog yang sudah dicek.",
   Experience: "Proyek mikro untuk mengasah pengalaman nyata.",

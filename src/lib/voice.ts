@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { aiAvailable } from "./ai-status";
 import { useAudioRecorder, useRecorderSupported } from "./recorder";
 import { useSpeechRecognition, useSpeechSupported } from "./speech";
 
@@ -15,16 +16,6 @@ export type VoiceEngine = "langsung" | "rekam";
 const noopSubscribe = () => () => {};
 /** Brave menyediakan SpeechRecognition tapi selalu gagal "network" (tidak tersambung ke layanan suara Google). */
 const isBrave = () => typeof navigator !== "undefined" && "brave" in navigator;
-
-let aiStatus: Promise<boolean> | null = null;
-/** Apakah server punya AI sungguhan (dibaca sekali per halaman). */
-function aiAvailable(): Promise<boolean> {
-  aiStatus ??= fetch("/api/status", { cache: "no-store" })
-    .then((res) => (res.ok ? res.json() : null))
-    .then((body: { ai?: unknown } | null) => !!body && body.ai !== "mock")
-    .catch(() => false);
-  return aiStatus;
-}
 
 export function useVoiceInput({ onFinal }: { onFinal: (text: string) => void }) {
   const liveSupported = useSpeechSupported();

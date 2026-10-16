@@ -124,7 +124,7 @@ describe("kompatibilitas data lama", () => {
       updated_at: "2026-10-15T00:00:00Z",
     };
     const parsed = RoadmapRowSchema.parse(old);
-    expect(parsed.costs).toEqual({ items: {} });
+    expect(parsed.costs).toEqual({ items: {}, extras: [], extrasStatus: "belum" });
     expect(parsed.steps[0].needs).toEqual([]);
     expect(parsed.steps[0].resources[0]).toMatchObject({ price: null, reason: null });
   });
